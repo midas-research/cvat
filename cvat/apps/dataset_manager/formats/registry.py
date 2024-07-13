@@ -117,3 +117,5 @@ import cvat.apps.dataset_manager.formats.kitti
 import cvat.apps.dataset_manager.formats.lfw
 import cvat.apps.dataset_manager.formats.cityscapes
 import cvat.apps.dataset_manager.formats.openimages
+#Audino Export Formats
+import cvat.apps.dataset_manager.formats.aud_common_voice

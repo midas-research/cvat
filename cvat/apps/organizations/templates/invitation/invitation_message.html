@@ -122,15 +122,15 @@
         <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px;">
           <tr>
             <td align="center" valign="bottom">
-              <a href="https://www.cvat.ai/" target="_blank" style="display: inline-block;">
-                <img
-                  src="https://github.com/cvat-ai/cvat/blob/develop/site/content/en/images/cvat_poster_with_name.png?raw=true"
-                  alt="Logo"
-                  border="0"
-                  width="100%"
-                  style="display: block; width: 100%;"
-                >
-              </a>
+              {% if "cvat" in site_name|lower %}
+                  <a href="https://www.cvat.ai/" target="_blank" style="display: inline-block;">
+                    <img src="https://github.com/cvat-ai/cvat/blob/develop/site/content/en/images/cvat_poster_with_name.png?raw=true" alt="Logo" border="0" width="100%" style="display: block; width: 100%;">
+                  </a>
+              {% else %}
+                  <a href="https://www.audino.in/" target="_blank" style="display: inline-block;">
+                    <img src="https://raw.githubusercontent.com/midas-research/audino/add-docs/docs/assets/banner.png" alt="Logo" border="0" width="100%" style="display: block; width: 100%;">
+                  </a>
+              {% endif %}
             </td>
           </tr>
         </table>
@@ -184,7 +184,11 @@
             <td align="left" bgcolor="#ffffff" style="padding: 24px; font-family: 'Source Sans Pro', Helvetica, Arial, sans-serif; font-size: 16px; line-height: 24px;">
               {% blocktrans %}
               <p>
-                You're receiving this email because you've been invited to join <strong>{{ organization_name }}</strong> organization in CVAT by <strong>{{ invitation_owner }}</strong> at {{ site_name }}.
+                {% if "cvat" in site_name|lower %}
+                    You're receiving this email because you've been invited to join <strong>{{ organization_name }}</strong> organization in CVAT by <strong>{{ invitation_owner }}</strong> at {{ site_name }}.
+                {% else %}
+                    You're receiving this email because you've been invited to join <strong>{{ organization_name }}</strong> organization in Audino by <strong>{{ invitation_owner }}</strong> at {{ site_name }}.
+                {% endif %}
               </p>
               <p style="margin: 0;">
                 To join organization and start annotating, simply tap the button below and complete registration.

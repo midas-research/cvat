@@ -17,7 +17,9 @@ from django.utils import timezone
 import cvat.apps.dataset_manager.project as project
 import cvat.apps.dataset_manager.task as task
 from cvat.apps.engine.log import ServerLogManager
-from cvat.apps.engine.models import Job, Project, Task
+from cvat.apps.engine.models import Job, Project, Task, DataChoice
+from datumaro.util import to_snake_case
+from datumaro.util.os_util import make_file_name
 
 from .formats.registry import EXPORT_FORMATS, IMPORT_FORMATS
 from .util import (
@@ -60,19 +62,28 @@ def get_export_cache_ttl(db_instance: str | Project | Task | Job) -> timedelta:
 
 
 def export(dst_format, project_id=None, task_id=None, job_id=None, server_url=None, save_images=False):
+    export_for = ""
     try:
         if task_id is not None:
             logger = slogger.task[task_id]
-            export_fn = task.export_task
             db_instance = Task.objects.get(pk=task_id)
+            if(db_instance.data.original_chunk_type == DataChoice.AUDIO):
+                export_fn = task.export_audino_task
+                export_for = "audio"
+            else:
+                export_fn =  task.export_task
         elif project_id is not None:
             logger = slogger.project[project_id]
             export_fn = project.export_project
             db_instance = Project.objects.get(pk=project_id)
         else:
             logger = slogger.job[job_id]
-            export_fn = task.export_job
             db_instance = Job.objects.get(pk=job_id)
+            if(db_instance.segment.task.data.original_chunk_type == DataChoice.AUDIO):
+                export_fn = task.export_audino_task
+                export_for = "audio"
+            else:
+                export_fn =  task.export_task
 
         cache_ttl = get_export_cache_ttl(db_instance)
 
@@ -90,10 +101,18 @@ def export(dst_format, project_id=None, task_id=None, job_id=None, server_url=No
             ))
             instance_update_time = max(tasks_update + [instance_update_time])
 
-        output_path = make_export_filename(
+        if export_for == "audio":
+            output_base = '%s-instance%f-%s' % ('dataset' if save_images else 'annotations', instance_update_time, make_file_name(to_snake_case(dst_format)))
+            output_path = '%s.%s' % (output_base, "zip")
+            output_path = osp.join(cache_dir, output_path)
+        else:
+            output_path = make_export_filename(
             cache_dir, save_images, instance_update_time.timestamp(), dst_format
         )
 
+        logger.info("OUTPUT PATH OF EXPORT")
+        logger.info(output_path)
+        logger.info("JOB DATA")
         os.makedirs(cache_dir, exist_ok=True)
 
         with get_export_cache_lock(

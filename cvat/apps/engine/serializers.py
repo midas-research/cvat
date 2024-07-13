@@ -25,6 +25,7 @@ from django.contrib.auth.models import User, Group
 from django.db import transaction
 from django.db.models import TextChoices
 
+from cvat.apps.engine.models import (AIAudioAnnotation, DataChoice)
 from cvat.apps.dataset_manager.formats.utils import get_label_color
 from cvat.apps.engine.utils import parse_exception_message
 from cvat.apps.engine import models
@@ -609,7 +610,8 @@ class JobReadSerializer(serializers.ModelSerializer):
             'dimension', 'bug_tracker', 'status', 'stage', 'state', 'mode', 'frame_count',
             'start_frame', 'stop_frame', 'data_chunk_size', 'data_compressed_chunk_type',
             'created_date', 'updated_date', 'issues', 'labels', 'type', 'organization',
-            'target_storage', 'source_storage')
+            'target_storage', 'source_storage', 'ai_audio_annotation_status',
+            'ai_audio_annotation_task_id', 'ai_audio_annotation_error_msg')
         read_only_fields = fields
 
     def to_representation(self, instance):
@@ -689,6 +691,7 @@ class JobWriteSerializer(WriteOnceMixin, serializers.ModelSerializer):
 
             size = task.data.size
             valid_frame_ids = task.data.get_valid_frame_indices()
+            segment_size = task.segment_size
 
             frame_selection_method = validated_data.pop("frame_selection_method", None)
             if frame_selection_method == models.JobFrameSelectionMethod.RANDOM_UNIFORM:
@@ -699,22 +702,44 @@ class JobWriteSerializer(WriteOnceMixin, serializers.ModelSerializer):
                         f"must be not be greater than the number of the task frames ({size})"
                     )
 
-                seed = validated_data.pop("seed", None)
+                if(task.data.original_chunk_type == DataChoice.AUDIO):
+                    num_segments = size // segment_size
+                    jobs_frame_list = []
+                    for i in range(num_segments):
+                        start = i * segment_size
+                        end  = (i+1) * segment_size - 1
+                        array = [j for j in range(start,end+1)]
+                        jobs_frame_list.append(array)
 
-                # The RNG backend must not change to yield reproducible results,
-                # so here we specify it explicitly
-                from numpy import random
-                rng = random.Generator(random.MT19937(seed=seed))
+                    #  if there's a remainder, create the  last array
+                    if size % segment_size != 0:
+                        start = num_segments * segment_size
+                        end  = size - 1
+                        array = [j for j in range(start,end+1)]
+                        jobs_frame_list.append(array)
 
-                if seed is not None and frame_count < size:
-                    # Reproduce the old (a little bit incorrect) behavior that existed before
-                    # https://github.com/cvat-ai/cvat/pull/7126
-                    # to make the old seed-based sequences reproducible
-                    valid_frame_ids = [v for v in valid_frame_ids if v != task.data.stop_frame]
+                    #Random select from the list
+                    import math, random
+                    random_jobs_no = math.ceil(frame_count / segment_size)
+                    selected_jobs_frames = random.sample(jobs_frame_list, random_jobs_no)
+                    frames = sorted([item for sublist in selected_jobs_frames for item in sublist])
+                else:
+                    seed = validated_data.pop("seed", None)
 
-                frames = rng.choice(
-                    list(valid_frame_ids), size=frame_count, shuffle=False, replace=False
-                ).tolist()
+                    # The RNG backend must not change to yield reproducible results,
+                    # so here we specify it explicitly
+                    from numpy import random
+                    rng = random.Generator(random.MT19937(seed=seed))
+
+                    if seed is not None and frame_count < size:
+                        # Reproduce the old (a little bit incorrect) behavior that existed before
+                        # https://github.com/cvat-ai/cvat/pull/7126
+                        # to make the old seed-based sequences reproducible
+                        valid_frame_ids = [v for v in valid_frame_ids if v != task.data.stop_frame]
+
+                    frames = rng.choice(
+                        list(valid_frame_ids), size=frame_count, shuffle=False, replace=False
+                    ).tolist()
             elif frame_selection_method == models.JobFrameSelectionMethod.MANUAL:
                 frames = validated_data.pop("frames")
 
@@ -784,7 +809,8 @@ class SimpleJobSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Job
-        fields = ('url', 'id', 'assignee', 'status', 'stage', 'state', 'type')
+        fields = ('url', 'id', 'assignee', 'status', 'stage', 'state', 'type',
+                'ai_audio_annotation_status', 'ai_audio_annotation_task_id', 'ai_audio_annotation_error_msg')
         read_only_fields = fields
 
 class SegmentSerializer(serializers.ModelSerializer):
@@ -1110,6 +1136,7 @@ class TaskReadSerializer(serializers.ModelSerializer):
     source_storage = StorageSerializer(required=False, allow_null=True)
     jobs = JobsSummarySerializer(url_filter_key='task_id', source='segment_set')
     labels = LabelsSummarySerializer(source='*')
+    segment_duration = serializers.IntegerField(allow_null=True)
 
     class Meta:
         model = models.Task
@@ -1117,7 +1144,7 @@ class TaskReadSerializer(serializers.ModelSerializer):
             'bug_tracker', 'created_date', 'updated_date', 'overlap', 'segment_size',
             'status', 'data_chunk_size', 'data_compressed_chunk_type', 'guide_id',
             'data_original_chunk_type', 'size', 'image_quality', 'data', 'dimension',
-            'subset', 'organization', 'target_storage', 'source_storage', 'jobs', 'labels',
+            'subset', 'organization', 'target_storage', 'source_storage', 'jobs', 'labels','segment_duration',
         )
         read_only_fields = fields
         extra_kwargs = {
@@ -1502,6 +1529,21 @@ class AnnotationSerializer(serializers.Serializer):
     label_id = serializers.IntegerField(min_value=0)
     group = serializers.IntegerField(min_value=0, allow_null=True, default=None)
     source = serializers.CharField(default='manual')
+    transcript = serializers.CharField(max_length=4096, allow_blank=True, allow_null=True, default="")
+    gender = serializers.CharField(max_length=4096, allow_blank=True, allow_null=True, default="")
+    age = serializers.CharField(max_length=4096, allow_blank=True, allow_null=True, default="")
+    locale = serializers.CharField(max_length=4096, allow_blank=True, allow_null=True, default="")
+    accent = serializers.CharField(max_length=4096, allow_blank=True, allow_null=True, default="")
+    emotion = serializers.CharField(max_length=4096, allow_blank=True, allow_null=True, default="")
+
+class AIAudioAnnotationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AIAudioAnnotation
+        fields = '__all__'
+
+class ExportAudioAnnotationSerializer(serializers.Serializer):
+    jobId = serializers.IntegerField()
+    format = serializers.CharField()
 
 class LabeledImageSerializer(AnnotationSerializer):
     attributes = AttributeValSerializer(many=True,
@@ -1574,6 +1616,7 @@ class LabeledShapeSerializerFromDB(serializers.BaseSerializer):
         def convert_shape(shape):
             result = _convert_annotation(shape, [
                 'id', 'label_id', 'type', 'frame', 'group', 'source',
+                'transcript', 'gender', 'age', 'locale', 'accent', 'emotion',
                 'occluded', 'outside', 'z_order', 'rotation', 'points',
             ])
             result['attributes'] = _convert_attributes(shape['labeledshapeattributeval_set'])

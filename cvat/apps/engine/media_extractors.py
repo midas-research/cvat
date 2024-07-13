@@ -3,6 +3,7 @@
 #
 # SPDX-License-Identifier: MIT
 
+import chardet
 import os
 import sysconfig
 import tempfile
@@ -489,6 +490,106 @@ class VideoReader(IMediaReader):
         image = (next(iter(self)))[0]
         return image.width, image.height
 
+class AudioReader(IMediaReader):
+    def __init__(self, source_path, step=1, start=0, stop=None, dimension=DimensionType.DIM_2D):
+        super().__init__(
+            source_path=source_path,
+            step=step,
+            start=start,
+            stop=stop + 1 if stop is not None else stop,
+            dimension=dimension,
+        )
+
+    def _has_frame(self, i):
+        if i >= self._start:
+            if (i - self._start) % self._step == 0:
+                if self._stop is None or i < self._stop:
+                    return True
+
+        return False
+
+    def get_total_frames(self):
+        total_frame = 0
+        with self._get_av_container() as container:
+            stream = container.streams.audio[0]
+            stream.thread_type = 'AUTO'
+            for packet in container.demux(stream):
+                for image in packet.decode():
+                    total_frame += 1
+
+        return total_frame
+
+    def get_file_encoding(self, file_path):
+
+        with open(file_path, 'rb') as f:
+            rawdata = f.read(1024)
+        result = chardet.detect(rawdata)
+        encoding = result['encoding']
+
+        return encoding
+
+    def __iter__(self):
+        with self._get_av_container() as container:
+            stream = container.streams.audio[0]
+            stream.thread_type = 'AUTO'
+            frame_num = 0
+            for packet in container.demux(stream):
+                for image in packet.decode():
+                    frame_num += 1
+                    if self._has_frame(frame_num - 1):
+                        yield (image, self._source_path[0], image.pts)
+
+    def get_progress(self, pos):
+        duration = self._get_duration()
+        return pos / duration if duration else None
+
+    def _get_av_container(self):
+        if isinstance(self._source_path[0], io.BytesIO):
+            self._source_path[0].seek(0) # required for re-reading
+
+        encoding = self.get_file_encoding(self._source_path[0])
+        if encoding:
+            return av.open(self._source_path[0], metadata_encoding = encoding)
+        else:
+            return av.open(self._source_path[0])
+
+    def _get_duration(self):
+        with self._get_av_container() as container:
+            stream = container.streams.audio[0]
+            duration = None
+            if stream.duration:
+                duration = stream.duration
+            else:
+                # may have a DURATION in format like "01:16:45.935000000"
+                duration_str = stream.metadata.get("DURATION", None)
+                tb_denominator = stream.time_base.denominator
+                if duration_str and tb_denominator:
+                    _hour, _min, _sec = duration_str.split(':')
+                    duration_sec = 60*60*float(_hour) + 60*float(_min) + float(_sec)
+                    duration = duration_sec * tb_denominator
+            return duration
+
+    def get_preview(self, frame):
+        with self._get_av_container() as container:
+            stream = container.streams.audio[0]
+            tb_denominator = stream.time_base.denominator
+            needed_time = int((frame / stream.guessed_rate) * tb_denominator)
+            container.seek(offset=needed_time, stream=stream)
+            for packet in container.demux(stream):
+                for frame in packet.decode():
+                    return self._get_preview(frame.to_image() if not stream.metadata.get('rotate') \
+                        else av.AudioFrame().from_ndarray(
+                            rotate_image(
+                                frame.to_ndarray(format='bgr24'),
+                                360 - int(container.streams.audio[0].metadata.get('rotate'))
+                            ),
+                            format ='bgr24'
+                        ).to_image()
+                    )
+
+    def get_image_size(self, i):
+        return 1, 1
+
 class FragmentMediaReader:
     def __init__(self, chunk_number, chunk_size, start, stop, step=1):
         self._start = start
@@ -805,6 +906,55 @@ class Mpeg4ChunkWriter(IChunkWriter):
         for packet in stream.encode():
             container.mux(packet)
 
+class AudioChunkWriter(IChunkWriter):
+    FORMAT = 'wav'
+
+    def __init__(self, quality=67):
+        # translate inversed range [1:100] to [0:51]
+        quality = round(51 * (100 - quality) / 99)
+        super().__init__(quality)
+        self.rate = 44100
+
+        codec = av.codec.Codec('pcm_s16le', 'w')
+        self._codec_name = codec.name
+        self._codec_opts = {
+        }
+
+    def _add_audio_stream(self, container, rate, options):
+
+        audio_stream = container.add_stream(self._codec_name, rate=rate, layout="stereo")
+        # audio_stream.options = options
+
+        return audio_stream
+
+    def save_as_chunk(self, images, chunk_path):
+        if not images:
+            raise Exception('no images to save')
+
+        with av.open(chunk_path, 'w', format=self.FORMAT) as output_container:
+            output_v_stream = self._add_audio_stream(
+                container=output_container,
+                rate=self.rate,
+                options=self._codec_opts,
+            )
+
+            self._encode_audio_frames(images, output_container, output_v_stream)
+        return [(0, 0)]
+
+    @staticmethod
+    def _encode_audio_frames(images, container, stream):
+        for frame, _, _ in images:
+            # let libav set the correct pts and time_base
+            frame.pts = None
+            frame.time_base = None
+
+            for packet in stream.encode(frame):
+                container.mux(packet)
+
+        # Flush streams
+        for packet in stream.encode():
+            container.mux(packet)
+
 class Mpeg4CompressedChunkWriter(Mpeg4ChunkWriter):
     def __init__(self, quality):
         super().__init__(quality)
@@ -856,6 +1006,10 @@ def _is_video(path):
     mime = mimetypes.guess_type(path)
     return mime[0] is not None and mime[0].startswith('video')
 
+def _is_audio(path):
+    mime = mimetypes.guess_type(path)
+    return mime[0] is not None and mime[0].startswith('audio')
+
 def _is_image(path):
     mime = mimetypes.guess_type(path)
     # Exclude vector graphic images because Pillow cannot work with them
@@ -889,6 +1043,12 @@ MEDIA_TYPES = {
         'has_mime_type': _is_image,
         'extractor': ImageListReader,
         'mode': 'annotation',
+        'unique': False,
+    },
+    'audio': {
+        'has_mime_type': _is_audio,
+        'extractor': AudioReader,
+        'mode': 'interpolation',
         'unique': False,
     },
     'video': {

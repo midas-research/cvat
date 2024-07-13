@@ -183,6 +183,7 @@ class _TaskBackupBase(_BackupBase):
             'status',
             'subset',
             'labels',
+            'segment_duration',
         }
 
         return self._prepare_meta(allowed_fields, task)
@@ -232,6 +233,12 @@ class _TaskBackupBase(_BackupBase):
             'attributes',
             'shapes',
             'elements',
+            'gender',
+            'age',
+            'accent',
+            'transcript',
+            'locale',
+            'emotion'
         }
 
         def _update_attribute(attribute, label):
@@ -328,6 +335,7 @@ class TaskExporter(_ExporterBase, _TaskBackupBase):
         self._db_task = models.Task.objects.prefetch_related('data__images', 'annotation_guide__assets').select_related('data__video', 'annotation_guide').get(pk=pk)
         self._db_data = self._db_task.data
         self._version = version
+        self.logger = slogger.task[pk]
 
         db_labels = (self._db_task.project if self._db_task.project_id else self._db_task).label_set.all().prefetch_related(
             'attributespec_set')
@@ -641,6 +649,8 @@ class TaskImporter(_ImporterBase, _TaskBackupBase):
         jobs = self._manifest.pop('jobs')
 
         self._prepare_task_meta(self._manifest)
+        self._logger.info("DEBUG IMPORT")
+        self._logger.info(self._manifest)
         self._manifest['owner_id'] = self._user_id
         self._manifest['project_id'] = self._project_id
 
