@@ -577,9 +577,6 @@ class Segment(models.Model):
     start_frame = models.IntegerField()
     stop_frame = models.IntegerField()
     type = models.CharField(choices=SegmentType.choices(), default=SegmentType.RANGE, max_length=32)
-    ai_audio_annotation_status = models.CharField(max_length=32, choices=AI_AUDIO_ANNOTATION_CHOICES.choices(), default=AI_AUDIO_ANNOTATION_CHOICES.NOT_STARTED)
-    ai_audio_annotation_task_id = models.CharField(max_length=100, default="", null=True, blank=True)
-    ai_audio_annotation_error_msg = models.CharField(max_length=4096, default="", null=True, blank=True)
 
     # TODO: try to reuse this field for custom task segments (aka job_file_mapping)
     # SegmentType.SPECIFIC_FRAMES fields
@@ -698,6 +695,9 @@ class Job(TimestampedModel):
 
     type = models.CharField(max_length=32, choices=JobType.choices(),
         default=JobType.ANNOTATION)
+    ai_audio_annotation_status = models.CharField(max_length=32, choices=AI_AUDIO_ANNOTATION_CHOICES.choices(), default=AI_AUDIO_ANNOTATION_CHOICES.NOT_STARTED)
+    ai_audio_annotation_task_id = models.CharField(max_length=100, default="", null=True, blank=True)
+    ai_audio_annotation_error_msg = models.CharField(max_length=4096, default="", null=True, blank=True)
 
     def get_target_storage(self) -> Optional[Storage]:
         return self.segment.task.target_storage

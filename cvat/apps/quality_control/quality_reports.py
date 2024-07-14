@@ -17,7 +17,7 @@ import datumaro as dm
 import datumaro.util.mask_tools
 import django_rq
 import numpy as np
-from attrs import asdict, define, fields_dict, field
+from attrs import asdict, define, fields_dict
 from datumaro.util import dump_json, parse_json
 from django.conf import settings
 from django.db import transaction

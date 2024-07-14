@@ -1160,12 +1160,13 @@ class TaskWriteSerializer(WriteOnceMixin, serializers.ModelSerializer):
     project_id = serializers.IntegerField(required=False, allow_null=True)
     target_storage = StorageSerializer(required=False, allow_null=True)
     source_storage = StorageSerializer(required=False, allow_null=True)
+    segment_duration = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta:
         model = models.Task
         fields = ('url', 'id', 'name', 'project_id', 'owner_id', 'assignee_id',
             'bug_tracker', 'overlap', 'segment_size', 'labels', 'subset',
-            'target_storage', 'source_storage',
+            'target_storage', 'source_storage', 'segment_duration',
         )
         write_once_fields = ('overlap', 'segment_size')
 
@@ -1603,7 +1604,7 @@ class LabeledImageSerializerFromDB(serializers.BaseSerializer):
     # Because default DRF serializer is too slow on huge collections
     def to_representation(self, instance):
         def convert_tag(tag):
-            result = _convert_annotation(tag, ['id', 'label_id', 'frame', 'group', 'source'])
+            result = _convert_annotation(tag, ['id', 'label_id', 'frame', 'group', 'source', 'transcript', 'gender', 'age', 'locale', 'accent', 'emotion'])
             result['attributes'] = _convert_attributes(tag['labeledimageattributeval_set'])
             return result
 

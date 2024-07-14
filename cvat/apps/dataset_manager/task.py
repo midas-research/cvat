@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: MIT
 
 import math
-import wave
 import soundfile
 import shutil
 import pandas as pd
