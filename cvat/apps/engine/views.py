@@ -2247,7 +2247,7 @@ class AIAudioAnnotationViewSet(viewsets.ModelViewSet):
             job.save()
 
             # Iterate over segments and save to the model
-            ai_annotation_host = os.getenv('AI_ANNOTATION_HOST', '35.208.178.37')
+            ai_annotation_host = os.getenv('AI_ANNOTATION_HOST', 'localhost')
             ai_annotation_port = int(os.getenv('AI_ANNOTATION_PORT', "8000"))
             url = f"http://{ai_annotation_host}:{ai_annotation_port}/transcript"
             r = requests.post(url, json={ "jobId" : job_id, "lang" : lang, "authToken" : authHeader, "background_task_id" : background_task_id})
