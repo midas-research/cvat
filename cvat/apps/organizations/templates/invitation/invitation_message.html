@@ -182,18 +182,22 @@
           <!-- start copy -->
           <tr>
             <td align="left" bgcolor="#ffffff" style="padding: 24px; font-family: 'Source Sans Pro', Helvetica, Arial, sans-serif; font-size: 16px; line-height: 24px;">
-              {% blocktrans %}
               <p>
                 {% if "cvat" in site_name|lower %}
+                  {% blocktrans %}
                     You're receiving this email because you've been invited to join <strong>{{ organization_name }}</strong> organization in CVAT by <strong>{{ invitation_owner }}</strong> at {{ site_name }}.
+                  {% endblocktrans %}
                 {% else %}
+                  {% blocktrans %}
                     You're receiving this email because you've been invited to join <strong>{{ organization_name }}</strong> organization in Audino by <strong>{{ invitation_owner }}</strong> at {{ site_name }}.
+                  {% endblocktrans %}
                 {% endif %}
               </p>
               <p style="margin: 0;">
-                To join organization and start annotating, simply tap the button below and complete registration.
+                {% blocktrans %}
+                  To join organization and start annotating, simply tap the button below and complete registration.
+                {% endblocktrans %}
               </p>
-              {% endblocktrans %}
             </td>
           </tr>
           <!-- end copy -->

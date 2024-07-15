@@ -80,10 +80,10 @@ def export(dst_format, project_id=None, task_id=None, job_id=None, server_url=No
             logger = slogger.job[job_id]
             db_instance = Job.objects.get(pk=job_id)
             if(db_instance.segment.task.data.original_chunk_type == DataChoice.AUDIO):
-                export_fn = task.export_audino_task
+                export_fn = task.export_audino_job
                 export_for = "audio"
             else:
-                export_fn =  task.export_task
+                export_fn =  task.export_job
 
         cache_ttl = get_export_cache_ttl(db_instance)
 
@@ -102,7 +102,7 @@ def export(dst_format, project_id=None, task_id=None, job_id=None, server_url=No
             instance_update_time = max(tasks_update + [instance_update_time])
 
         if export_for == "audio":
-            output_base = '%s-instance%f-%s' % ('dataset' if save_images else 'annotations', instance_update_time, make_file_name(to_snake_case(dst_format)))
+            output_base = '%s-instance%f-%s' % ('dataset' if save_images else 'annotations', instance_update_time.timestamp(), make_file_name(to_snake_case(dst_format)))
             output_path = '%s.%s' % (output_base, "zip")
             output_path = osp.join(cache_dir, output_path)
         else:

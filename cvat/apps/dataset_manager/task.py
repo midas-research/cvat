@@ -3,6 +3,7 @@
 #
 # SPDX-License-Identifier: MIT
 
+import json
 import math
 import soundfile
 import shutil

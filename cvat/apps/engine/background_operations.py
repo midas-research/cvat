@@ -396,7 +396,7 @@ class DatasetExportManager(_ResourceExportManager):
         user_id = self.request.user.id
 
         func = self.export_callback
-        func_args = (self.db_instance.id, self.export_args.format, server_address, self.EXPORT_FOR)
+        func_args = (self.db_instance.id, self.export_args.format, server_address)
         result_url = None
 
         if self.export_args.location == Location.CLOUD_STORAGE:

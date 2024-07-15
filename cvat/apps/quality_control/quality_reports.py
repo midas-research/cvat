@@ -173,7 +173,7 @@ class ComparisonParameters(_Serializable):
     compare_attributes: bool = True
     "Enables or disables attribute checks"
 
-    compare_extra_parameters: bool = True
+    compare_extra_parameters: bool = False
     "Enables or disables extra parameters checks for audio data"
 
     wer_threshold: float = 0.3
@@ -2179,29 +2179,6 @@ class AudioDatasetComparator:
             obj_id=source_ann_id, type=ann_type, shape_type=shape_type, job_id=source_data_provider.job_id
         )
 
-    def _find_audio_gt_conflicts(self):
-        start = self._ds_data_provider.job_data.start
-        end = self._ds_data_provider.job_data.stop - 1
-        gt_frame_list =  self._gt_data_provider.job_data._db_job.segment.frames
-
-        # Check if any frame in gt_data_frame_array is in ds_data_frame_array
-        if not (start in gt_frame_list or end in gt_frame_list):
-            return # we need to compare only intersecting jobs
-
-        ds_annotations = self._ds_data_provider.job_annotation.data['shapes']
-        gt_annotations = self._gt_data_provider.job_annotation.data['shapes']
-
-        self._process_job(ds_annotations, gt_annotations)
-
-    def _process_job(self, ds_annotations, gt_annotations):
-        job_id = self._job_id
-        job_results = self.match_annotations(ds_annotations, gt_annotations)
-        self._job_results.setdefault(job_id, {})
-
-        self._generate_job_annotation_conflicts(
-            job_results, gt_annotations, ds_annotations
-        )
-
     def match_annotations(self, ds_annotations, gt_annotations):
         """
         Match annotations between two datasets.
@@ -2298,7 +2275,7 @@ class AudioDatasetComparator:
         return matches, a_unmatched, b_unmatched
 
     def match_extra_parameters(self, gt_ann, ds_ann):
-        parameters = ['Gender', 'Locale', 'Accent', 'Emotion', 'Age']
+        parameters = ['gender', 'locale', 'accent', 'emotion', 'age']
         matches = []
         mismatches = []
         for param in parameters:
@@ -2382,6 +2359,28 @@ class AudioDatasetComparator:
         cer = d[len(gt_chars)][len(ds_chars)] / float(len(gt_chars))
         return cer
 
+    def _find_audio_gt_conflicts(self):
+        start = self._ds_data_provider.job_data.start
+        end = self._ds_data_provider.job_data.stop - 1
+        gt_frame_list =  self._gt_data_provider.job_data._db_job.segment.frames
+
+        # Check if any frame in gt_data_frame_array is in ds_data_frame_array
+        if not (start in gt_frame_list or end in gt_frame_list):
+            return # we need to compare only intersecting jobs
+
+        ds_annotations = self._ds_data_provider.job_annotation.data['shapes']
+        gt_annotations = self._gt_data_provider.job_annotation.data['shapes']
+
+        self._process_job(ds_annotations, gt_annotations)
+
+    def _process_job(self, ds_annotations, gt_annotations):
+        job_id = self._job_id
+        job_results = self.match_annotations(ds_annotations, gt_annotations)
+        self._job_results.setdefault(job_id, {})
+
+        self._generate_job_annotation_conflicts(
+            job_results, gt_annotations, ds_annotations
+        )
 
     def _generate_job_annotation_conflicts(
         self, job_results, gt_annotations, ds_annotations
@@ -2391,7 +2390,7 @@ class AudioDatasetComparator:
         word_error_rate = 0
         character_error_rate = 0
 
-        matches, mismatches, gt_unmatched, ds_unmatched, pairwise_distances = job_results
+        matches, mismatches, gt_unmatched, ds_unmatched, _ = job_results
 
         for unmatched_ann in gt_unmatched:
             conflicts.append(
@@ -2485,21 +2484,7 @@ class AudioDatasetComparator:
         invalid_labels_count = len(mismatches)
         total_labels_count = valid_labels_count + invalid_labels_count
 
-        # Get labels from project returns a queryset)
-        labels_queryset = self._ds_data_provider.job_data._db_task.project.get_labels()
-
-        # Convert queryset to a dictionary of labels
-        confusion_matrix_labels = {
-            label.id: label.name
-            for i, label in enumerate(labels_queryset)
-            if not label.parent
-        }
-        confusion_matrix_labels[None] = "unmatched"
-        confusion_matrix_labels_rmap = {k: i for i, k in enumerate(confusion_matrix_labels.keys())}
-        confusion_matrix_label_count = len(confusion_matrix_labels)
-        confusion_matrix = np.zeros(
-            (confusion_matrix_label_count, confusion_matrix_label_count), dtype=int
-        )
+        confusion_matrix_labels, confusion_matrix, label_id_map = self._make_zero_confusion_matrix()
         for gt_ann, ds_ann in itertools.chain(
             # fully matched annotations - shape, label, attributes
             matches,
@@ -2507,45 +2492,13 @@ class AudioDatasetComparator:
             zip(itertools.repeat(None), ds_unmatched),
             zip(gt_unmatched, itertools.repeat(None)),
         ):
-            ds_label_idx = confusion_matrix_labels_rmap[ds_ann["label_id"] if ds_ann else None]
-            gt_label_idx = confusion_matrix_labels_rmap[gt_ann["label_id"] if gt_ann else None]
+            ds_label_idx = label_id_map[ds_ann["label_id"]] if ds_ann else self._UNMATCHED_IDX
+            gt_label_idx = label_id_map[gt_ann["label_id"]] if gt_ann else self._UNMATCHED_IDX
             confusion_matrix[ds_label_idx, gt_label_idx] += 1
 
-        matched_ann_counts = np.diag(confusion_matrix)
-        ds_ann_counts = np.sum(confusion_matrix, axis=1)
-        gt_ann_counts = np.sum(confusion_matrix, axis=0)
-        label_accuracies = _arr_div(
-            matched_ann_counts, ds_ann_counts + gt_ann_counts - matched_ann_counts
-        )
-        label_precisions = _arr_div(matched_ann_counts, ds_ann_counts)
-        label_recalls = _arr_div(matched_ann_counts, gt_ann_counts)
-
-        valid_annotations_count = np.sum(matched_ann_counts)
-        missing_annotations_count = np.sum(confusion_matrix[confusion_matrix_labels_rmap[None], :])
-        extra_annotations_count = np.sum(confusion_matrix[:, confusion_matrix_labels_rmap[None]])
-        total_annotations_count = np.sum(confusion_matrix)
-        ds_annotations_count = (
-            np.sum(ds_ann_counts) - ds_ann_counts[confusion_matrix_labels_rmap[None]]
-        )
-        gt_annotations_count = (
-            np.sum(gt_ann_counts) - gt_ann_counts[confusion_matrix_labels_rmap[None]]
-        )
-
         self._job_results[job_id] = ComparisonReportFrameSummary(
-            annotations=ComparisonReportAnnotationsSummary(
-                valid_count=valid_annotations_count,
-                missing_count=missing_annotations_count,
-                extra_count=extra_annotations_count,
-                total_count=total_annotations_count,
-                ds_count=ds_annotations_count,
-                gt_count=gt_annotations_count,
-                confusion_matrix=ConfusionMatrix(
-                    labels=list(confusion_matrix_labels.values()),
-                    rows=confusion_matrix,
-                    precision=label_precisions,
-                    recall=label_recalls,
-                    accuracy=label_accuracies,
-                ),
+            annotations=self._generate_annotations_summary(
+                confusion_matrix, confusion_matrix_labels
             ),
             annotation_components=ComparisonReportAnnotationComponentsSummary(
                 shape=ComparisonReportAnnotationShapeSummary(
@@ -2555,7 +2508,7 @@ class AudioDatasetComparator:
                     total_count=total_shapes_count,
                     ds_count=ds_shapes_count,
                     gt_count=gt_shapes_count,
-                    mean_iou=0.7,
+                    mean_iou=0.7, #need to fix
                 ),
                 label=ComparisonReportAnnotationLabelSummary(
                     valid_count=valid_labels_count,
@@ -2570,6 +2523,70 @@ class AudioDatasetComparator:
 
         return conflicts
 
+    # row/column index in the confusion matrix corresponding to unmatched annotations
+    _UNMATCHED_IDX = -1
+
+    def _make_zero_confusion_matrix(self) -> Tuple[List[str], np.ndarray, Dict[int, int]]:
+        # Get labels from project returns a queryset)
+        labels_queryset = self._ds_data_provider.job_data._db_task.project.get_labels()
+
+        label_id_idx_map = {}
+        label_names = []
+        for i, label in enumerate(labels_queryset):
+            if not label.parent:
+                label_id_idx_map[label.id] = len(label_names)
+                label_names.append(label.name)
+
+        label_names.append("unmatched")
+
+        num_labels = len(label_names)
+        confusion_matrix = np.zeros((num_labels, num_labels), dtype=int)
+
+        return label_names, confusion_matrix, label_id_idx_map
+
+    @classmethod
+    def _generate_annotations_summary(
+        cls, confusion_matrix: np.ndarray, confusion_matrix_labels: List[str]
+    ) -> ComparisonReportAnnotationsSummary:
+        matched_ann_counts = np.diag(confusion_matrix)
+        ds_ann_counts = np.sum(confusion_matrix, axis=1)
+        gt_ann_counts = np.sum(confusion_matrix, axis=0)
+        total_annotations_count = np.sum(confusion_matrix)
+
+        label_jaccard_indices = _arr_div(
+            matched_ann_counts, ds_ann_counts + gt_ann_counts - matched_ann_counts
+        )
+        label_precisions = _arr_div(matched_ann_counts, ds_ann_counts)
+        label_recalls = _arr_div(matched_ann_counts, gt_ann_counts)
+        label_accuracies = (
+            total_annotations_count  # TP + TN + FP + FN
+            - (ds_ann_counts - matched_ann_counts)  # - FP
+            - (gt_ann_counts - matched_ann_counts)  # - FN
+            # ... = TP + TN
+        ) / (total_annotations_count or 1)
+
+        valid_annotations_count = np.sum(matched_ann_counts)
+        missing_annotations_count = np.sum(confusion_matrix[cls._UNMATCHED_IDX, :])
+        extra_annotations_count = np.sum(confusion_matrix[:, cls._UNMATCHED_IDX])
+        ds_annotations_count = np.sum(ds_ann_counts[: cls._UNMATCHED_IDX])
+        gt_annotations_count = np.sum(gt_ann_counts[: cls._UNMATCHED_IDX])
+
+        return ComparisonReportAnnotationsSummary(
+            valid_count=valid_annotations_count,
+            missing_count=missing_annotations_count,
+            extra_count=extra_annotations_count,
+            total_count=total_annotations_count,
+            ds_count=ds_annotations_count,
+            gt_count=gt_annotations_count,
+            confusion_matrix=ConfusionMatrix(
+                labels=confusion_matrix_labels,
+                rows=confusion_matrix,
+                precision=label_precisions,
+                recall=label_recalls,
+                accuracy=label_accuracies,
+                jaccard_index=label_jaccard_indices,
+            ),
+        )
 
     def generate_audio_report(self) -> ComparisonReport:
         self._find_audio_gt_conflicts()
@@ -2577,15 +2594,7 @@ class AudioDatasetComparator:
         # accumulate stats
         intersection_frames = []
         conflicts = []
-        annotations = ComparisonReportAnnotationsSummary(
-            valid_count=0,
-            missing_count=0,
-            extra_count=0,
-            total_count=0,
-            ds_count=0,
-            gt_count=0,
-            confusion_matrix=None,
-        )
+
         annotation_components = ComparisonReportAnnotationComponentsSummary(
             shape=ComparisonReportAnnotationShapeSummary(
                 valid_count=0,
@@ -2603,17 +2612,12 @@ class AudioDatasetComparator:
             ),
         )
         mean_ious = []
-        confusion_matrices = []
+        confusion_matrix_labels, confusion_matrix, _ = self._make_zero_confusion_matrix()
 
         for job_id, job_result in self._job_results.items():
             intersection_frames.append(job_id)
             conflicts += job_result.conflicts
-
-            if annotations is None:
-                annotations = deepcopy(job_result.annotations)
-            else:
-                annotations.accumulate(job_result.annotations)
-            confusion_matrices.append(job_result.annotations.confusion_matrix.rows)
+            confusion_matrix += job_result.annotations.confusion_matrix.rows
 
             if annotation_components is None:
                 annotation_components = deepcopy(job_result.annotation_components)
@@ -2621,47 +2625,11 @@ class AudioDatasetComparator:
                 annotation_components.accumulate(job_result.annotation_components)
             mean_ious.append(job_result.annotation_components.shape.mean_iou)
 
-        # Get labels from project returns a queryset)
-        labels_queryset = self._ds_data_provider.job_data._db_task.project.get_labels()
 
-        # Convert queryset to a dictionary of labels
-        confusion_matrix_labels = {
-            label.id: label.name
-            for i, label in enumerate(labels_queryset)
-            if not label.parent
-        }
-        confusion_matrix_labels[None] = "unmatched"
-        confusion_matrix_labels_rmap = {k: i for i, k in enumerate(confusion_matrix_labels.keys())}
-        if confusion_matrices:
-            confusion_matrix = np.sum(confusion_matrices, axis=0)
-        else:
-            confusion_matrix = np.zeros(
-                (len(confusion_matrix_labels), len(confusion_matrix_labels)), dtype=int
-            )
-        matched_ann_counts = np.diag(confusion_matrix)
-        ds_ann_counts = np.sum(confusion_matrix, axis=1)
-        gt_ann_counts = np.sum(confusion_matrix, axis=0)
-        label_accuracies = _arr_div(
-            matched_ann_counts, ds_ann_counts + gt_ann_counts - matched_ann_counts
-        )
-        label_precisions = _arr_div(matched_ann_counts, ds_ann_counts)
-        label_recalls = _arr_div(matched_ann_counts, gt_ann_counts)
-
-        valid_annotations_count = np.sum(matched_ann_counts)
-        missing_annotations_count = np.sum(confusion_matrix[confusion_matrix_labels_rmap[None], :])
-        extra_annotations_count = np.sum(confusion_matrix[:, confusion_matrix_labels_rmap[None]])
-        total_annotations_count = np.sum(confusion_matrix)
-        ds_annotations_count = (
-            np.sum(ds_ann_counts) - ds_ann_counts[confusion_matrix_labels_rmap[None]]
-        )
-        gt_annotations_count = (
-            np.sum(gt_ann_counts) - gt_ann_counts[confusion_matrix_labels_rmap[None]]
-        )
-
-        frame_result = self._job_results.get(self._job_id, None)
-        if frame_result:
-            word_error_rate = frame_result.word_error_rate
-            character_error_rate = frame_result.character_error_rate
+        job_result = self._job_results.get(self._job_id, None)
+        if job_result:
+            word_error_rate = job_result.word_error_rate
+            character_error_rate = job_result.character_error_rate
         else:
             word_error_rate = 0.0
             character_error_rate = 0.0
@@ -2670,7 +2638,7 @@ class AudioDatasetComparator:
             parameters=self.settings,
             comparison_summary=ComparisonReportComparisonSummary(
                 frame_share=(
-                    len(intersection_frames) / (len(self._ds_data_provider.job_data.rel_range) or 1)
+                    1 if len(intersection_frames) > 0 else 0
                 ),
                 frames=intersection_frames,
                 conflict_count=len(conflicts),
@@ -2681,20 +2649,8 @@ class AudioDatasetComparator:
                     [c for c in conflicts if c.severity == AnnotationConflictSeverity.ERROR]
                 ),
                 conflicts_by_type=Counter(c.type for c in conflicts),
-                annotations=ComparisonReportAnnotationsSummary(
-                    valid_count=valid_annotations_count,
-                    missing_count=missing_annotations_count,
-                    extra_count=extra_annotations_count,
-                    total_count=total_annotations_count,
-                    ds_count=ds_annotations_count,
-                    gt_count=gt_annotations_count,
-                    confusion_matrix=ConfusionMatrix(
-                        labels=list(confusion_matrix_labels.values()),
-                        rows=confusion_matrix,
-                        precision=label_precisions,
-                        recall=label_recalls,
-                        accuracy=label_accuracies,
-                    ),
+                annotations=self._generate_annotations_summary(
+                    confusion_matrix, confusion_matrix_labels
                 ),
                 annotation_components=ComparisonReportAnnotationComponentsSummary(
                     shape=ComparisonReportAnnotationShapeSummary(

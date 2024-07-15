@@ -168,8 +168,8 @@
                 "CVAT_SERVERLESS": "1",
                 "ALLOWED_HOSTS": "*",
                 "IAM_OPA_BUNDLE": "1",
-                "DJANGO_LOG_SERVER_HOST": "localhost",
-                "DJANGO_LOG_SERVER_PORT": "8282"
+                // "DJANGO_LOG_SERVER_HOST": "localhost",
+                // "DJANGO_LOG_SERVER_PORT": "8282"
             },
             "args": [
                 "runserver",
@@ -211,8 +211,8 @@
             "django": true,
             "cwd": "${workspaceFolder}",
             "env": {
-                "DJANGO_LOG_SERVER_HOST": "localhost",
-                "DJANGO_LOG_SERVER_PORT": "8282"
+                // "DJANGO_LOG_SERVER_HOST": "localhost",
+                // "DJANGO_LOG_SERVER_PORT": "8282"
             },
             "console": "internalConsole"
         },
@@ -233,8 +233,8 @@
             "django": true,
             "cwd": "${workspaceFolder}",
             "env": {
-                "DJANGO_LOG_SERVER_HOST": "localhost",
-                "DJANGO_LOG_SERVER_PORT": "8282"
+                // "DJANGO_LOG_SERVER_HOST": "localhost",
+                // "DJANGO_LOG_SERVER_PORT": "8282"
             },
             "console": "internalConsole"
         },
@@ -255,8 +255,8 @@
             "django": true,
             "cwd": "${workspaceFolder}",
             "env": {
-                "DJANGO_LOG_SERVER_HOST": "localhost",
-                "DJANGO_LOG_SERVER_PORT": "8282"
+                // "DJANGO_LOG_SERVER_HOST": "localhost",
+                // "DJANGO_LOG_SERVER_PORT": "8282"
             },
             "console": "internalConsole"
         },
@@ -277,8 +277,8 @@
             "django": true,
             "cwd": "${workspaceFolder}",
             "env": {
-                "DJANGO_LOG_SERVER_HOST": "localhost",
-                "DJANGO_LOG_SERVER_PORT": "8282"
+                // "DJANGO_LOG_SERVER_HOST": "localhost",
+                // "DJANGO_LOG_SERVER_PORT": "8282"
             },
             "console": "internalConsole"
         },
@@ -296,8 +296,8 @@
                 "-i", "1"
             ],
             "env": {
-                "DJANGO_LOG_SERVER_HOST": "localhost",
-                "DJANGO_LOG_SERVER_PORT": "8282"
+                // "DJANGO_LOG_SERVER_HOST": "localhost",
+                // "DJANGO_LOG_SERVER_PORT": "8282"
             },
             "console": "internalConsole"
         },
@@ -356,8 +356,8 @@
             "django": true,
             "cwd": "${workspaceFolder}",
             "env": {
-                "DJANGO_LOG_SERVER_HOST": "localhost",
-                "DJANGO_LOG_SERVER_PORT": "8282"
+                // "DJANGO_LOG_SERVER_HOST": "localhost",
+                // "DJANGO_LOG_SERVER_PORT": "8282"
             },
             "console": "internalConsole"
         },
