@@ -17,6 +17,9 @@ from datetime import datetime
 from redis.exceptions import ConnectionError as RedisConnectionError
 from tempfile import NamedTemporaryFile
 from textwrap import dedent
+import uuid
+import requests
+from allauth.account.adapter import get_adapter
 
 import django_rq
 from attr.converters import to_bool
@@ -30,6 +33,8 @@ from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from django_rq.queues import DjangoRQ
+from django.contrib.sites.shortcuts import get_current_site
+from django.core.exceptions import ImproperlyConfigured
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
@@ -42,7 +47,7 @@ from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, NotFound, ValidationError, PermissionDenied
 from rest_framework.parsers import MultiPartParser
-from rest_framework.permissions import SAFE_METHODS
+from rest_framework.permissions import SAFE_METHODS, AllowAny
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 
@@ -61,7 +66,7 @@ from cvat.apps.engine.models import (
     ClientFile, Job, JobType, Label, SegmentType, Task, Project, Issue, Data,
     Comment, StorageMethodChoice, StorageChoice,
     CloudProviderChoice, Location, CloudStorage as CloudStorageModel,
-    Asset, AnnotationGuide)
+    Asset, AnnotationGuide, AIAudioAnnotation)
 from cvat.apps.engine.serializers import (
     AboutSerializer, AnnotationFileSerializer, BasicUserSerializer,
     DataMetaReadSerializer, DataMetaWriteSerializer, DataSerializer,
@@ -75,7 +80,7 @@ from cvat.apps.engine.serializers import (
     IssueWriteSerializer, CommentReadSerializer, CommentWriteSerializer, CloudStorageWriteSerializer,
     CloudStorageReadSerializer, DatasetFileSerializer,
     ProjectFileSerializer, TaskFileSerializer, RqIdSerializer, CloudStorageContentSerializer,
-    RequestSerializer, RequestStatus, RequestAction, RequestSubresource,
+    RequestSerializer, RequestStatus, RequestAction, RequestSubresource, AIAudioAnnotationSerializer,
 )
 from cvat.apps.engine.permissions import get_cloud_storage_for_import_or_export
 
@@ -751,7 +756,8 @@ class JobDataGetter(DataChunkGetter):
             raise ValidationError("The frame number doesn't belong to the job")
 
     def __call__(self, request, start, stop, db_data):
-        if self.type == 'chunk' and self.job.segment.type == SegmentType.SPECIFIC_FRAMES:
+        if self.type == 'chunk' and self.job.segment.type == SegmentType.SPECIFIC_FRAMES \
+        and self.job.segment.task.data.compressed_chunk_type != 'audio':
             frame_provider = FrameProvider(db_data, self.dimension)
 
             start_chunk = frame_provider.get_chunk_number(start)
@@ -2067,6 +2073,7 @@ class JobViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mixins.CreateMo
         data_start_frame = db_data.start_frame + start_frame * frame_step
         data_stop_frame = min(db_data.stop_frame, db_data.start_frame + stop_frame * frame_step)
         frame_set = db_job.segment.frame_set
+        # segment_size = db_job.segment.task.segment_size
 
         if request.method == 'PATCH':
             serializer = DataMetaWriteSerializer(instance=db_data, data=request.data)
@@ -2139,6 +2146,130 @@ class JobViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mixins.CreateMo
         return data_getter(request, self._object.segment.start_frame,
            self._object.segment.stop_frame, self._object.segment.task.data)
 
+class AIAudioAnnotationViewSet(viewsets.ModelViewSet):
+    queryset = AIAudioAnnotation.objects.order_by("-id").all()
+    serializer_class = AIAudioAnnotationSerializer
+    search_fields = ('text')
+    permission_classes = [AllowAny]
+    filter_fields = []
+    filter_backends = []
+
+    def send_annotation_email(self, request, template_name, err=None):
+        job_id = request.data.get('jobId')
+        if settings.EMAIL_BACKEND is None:
+            raise ImproperlyConfigured("Email backend is not configured")
+
+        # Find the user associated with current request
+        user = self.request.user
+
+        target_email = user.email
+        current_site = get_current_site(request)
+        site_name = current_site.name
+        domain = current_site.domain
+        context = {
+            'username': user.username,
+            'domain': domain,
+            'site_name': site_name,
+            'job_id': job_id,
+            'protocol': 'https' if request.is_secure() else 'http'
+        }
+        if err:
+            context['error'] = err
+
+        get_adapter(request).send_mail(f'audio_annotation/{template_name}', target_email, context)
+
+    @action(detail=False, methods=['post'], url_path='save')
+    def save_segments(self, request):
+        try:
+            job_id = request.data.get('jobId')
+
+            # Find labels of a particular job
+            job = Job.objects.get(id=job_id)
+            # labels_queryset = job.get_labels()
+            # labels_list = list(labels_queryset.values())
+
+            segments = request.data.get('segments')
+
+            # Validate data
+            if not job_id:
+                return Response({'error': 'Invalid data format'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Iterate over segments and save to the model
+            saved_segments = []
+            for segment in segments:
+                segment['job'] = job_id  # Assign job_id to each segment
+                serializer = AIAudioAnnotationSerializer(data=segment)
+                if serializer.is_valid():
+                    serializer.save()
+                    saved_segments.append(serializer.data)
+                else:
+                    return Response({'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Save the status to completed
+
+            error_msg = request.data.get("error_msg")
+
+            if error_msg is not None and len(error_msg) > 0:
+                job.ai_audio_annotation_status = "failed"
+                job.ai_audio_annotation_error_msg = error_msg
+            else:
+                job.ai_audio_annotation_status = "completed"
+
+            job.save()
+
+            self.send_annotation_email(request, 'annotation')
+            return Response({'success': True, 'segments': saved_segments}, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            self.send_annotation_email(request, 'error', err=str(e))
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], url_path='ai-annotate')
+    def request_ai_annotation(self, request):
+        try:
+            job_id = request.data.get('jobId')
+            lang = request.data.get('lang')
+            authHeader = request.headers.get('Authorization')
+
+            # Find labels of a particular job
+            job = Job.objects.get(id=job_id)
+
+            # Validate data
+            if not job:
+                return Response({'error': 'Invalid job'}, status=status.HTTP_400_BAD_REQUEST)
+
+            background_task_id = str(uuid.uuid4())
+
+            job.ai_audio_annotation_status = "in progress"
+            job.ai_audio_annotation_task_id = background_task_id
+
+            job.save()
+
+            # Iterate over segments and save to the model
+            ai_annotation_host = os.getenv('AI_ANNOTATION_HOST', 'localhost')
+            ai_annotation_port = int(os.getenv('AI_ANNOTATION_PORT', "8000"))
+            url = f"http://{ai_annotation_host}:{ai_annotation_port}/transcript"
+            try:
+                r = requests.post(
+                    url,
+                    json={
+                        "jobId": job_id,
+                        "lang": lang,
+                        "authToken": authHeader,
+                        "background_task_id": background_task_id
+                    },
+                    timeout=60  # Timeout in seconds
+                )
+                r.raise_for_status()  # Raises an HTTPError for bad responses (4xx or 5xx)
+            except requests.exceptions.Timeout:
+                slogger.glob.error("The request to %s timed out", url)
+            except requests.exceptions.RequestException as e:
+                slogger.glob.error("An error occurred while making the request: %s", e)
+
+            return Response({'success': True}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @extend_schema(tags=['issues'])
 @extend_schema_view(
@@ -3154,7 +3285,8 @@ def _import_project_dataset(request, rq_id_template, rq_func, db_obj, format_nam
         summary='Get request details',
         responses={
             '200': RequestSerializer,
-        }
+        },
+        parameters = [OpenApiParameter(name="id", type=str, location=OpenApiParameter.PATH)]
     ),
 )
 class RequestViewSet(viewsets.GenericViewSet):
@@ -3330,6 +3462,7 @@ class RequestViewSet(viewsets.GenericViewSet):
         responses={
             '200': OpenApiResponse(description='The request has been cancelled'),
         },
+        parameters = [OpenApiParameter(name="id", type=str, location=OpenApiParameter.PATH)]
     )
     @method_decorator(never_cache)
     @action(detail=True, methods=['POST'], url_path='cancel')

@@ -25,6 +25,7 @@ router.register('cloudstorages', views.CloudStorageViewSet)
 router.register('assets', views.AssetsViewSet)
 router.register('guides', views.AnnotationGuidesViewSet)
 router.register('requests', views.RequestViewSet,  basename="request")
+router.register('ai-audio-annotation', views.AIAudioAnnotationViewSet)
 
 urlpatterns = [
     # Entry point for a client

@@ -61,7 +61,5 @@ tomlkit==0.12.5
     # via pylint
 tornado==6.4
     # via snakeviz
-
-# The following packages are considered to be unsafe in a requirements file:
-setuptools==70.0.0
-    # via astroid
+soundfile==0.12.1
+chardet==5.2.0

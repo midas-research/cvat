@@ -359,3 +359,9 @@ zipp==3.18.2
     # via importlib-metadata
 zstandard==0.22.0
     # via clickhouse-connect
+soundfile==0.12.1
+    # via -r cvat/requirements/base.in
+chardet==5.2.0
+    # via -r cvat/requirements/base.in
+pydub==0.25.1
+    # via -r cvat/requirements/base.in

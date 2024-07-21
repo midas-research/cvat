@@ -194,6 +194,10 @@ class DatasetExportManager(_ResourceExportManager):
             save_images=save_images,
             location_config=location_config,
         )
+        self.EXPORT_FOR = ""
+        AUDIO_FORMATS = ["Common Voice", "Librispeech", "VoxPopuli", "Ted-Lium"]
+        if format_name in AUDIO_FORMATS:
+            self.EXPORT_FOR = "audio"
 
     def _handle_rq_job_v1(
         self,
@@ -331,14 +335,17 @@ class DatasetExportManager(_ResourceExportManager):
             return Response(status=status.HTTP_202_ACCEPTED)
 
     def export(self) -> Response:
-        format_desc = {f.DISPLAY_NAME: f for f in dm.views.get_export_formats()}.get(
-            self.export_args.format
-        )
+        if self.EXPORT_FOR == "audio":
+            format_desc = { "ENABLED" : True }
+        else:
+            format_desc = {f.DISPLAY_NAME: f for f in dm.views.get_export_formats()}.get(
+                self.export_args.format
+            )
         if format_desc is None:
             raise serializers.ValidationError(
                 "Unknown format specified for the request"
             )
-        elif not format_desc.ENABLED:
+        elif (self.EXPORT_FOR == "audio" and not format_desc["ENABLED"]) or (self.EXPORT_FOR != "audio" and not format_desc.ENABLED):
             return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
         queue: DjangoRQ = django_rq.get_queue(self.QUEUE_NAME)

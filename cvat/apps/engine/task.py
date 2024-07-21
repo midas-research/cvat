@@ -3,6 +3,9 @@
 #
 # SPDX-License-Identifier: MIT
 
+import math
+import sys
+import av
 import itertools
 import fnmatch
 import os
@@ -25,7 +28,7 @@ from pathlib import Path
 
 from cvat.apps.engine import models
 from cvat.apps.engine.log import ServerLogManager
-from cvat.apps.engine.media_extractors import (MEDIA_TYPES, ImageListReader, Mpeg4ChunkWriter, Mpeg4CompressedChunkWriter,
+from cvat.apps.engine.media_extractors import (MEDIA_TYPES, ImageListReader, Mpeg4ChunkWriter, Mpeg4CompressedChunkWriter, AudioChunkWriter,
     ValidateDimension, ZipChunkWriter, ZipCompressedChunkWriter, get_mime, sort)
 from cvat.apps.engine.utils import (
     av_scan_paths,get_rq_job_meta, define_dependent_job, get_rq_lock_by_user, preload_images
@@ -120,8 +123,29 @@ def _get_task_segment_data(
     *,
     data_size: Optional[int] = None,
     job_file_mapping: Optional[JobFileMapping] = None,
+    segment_duration: Optional[int] = None
 ) -> SegmentsParams:
-    if job_file_mapping is not None:
+
+    if segment_duration is not None:
+        # Total audio duration in milliseconds
+        audio_total_duration = (db_task.audio_total_duration)
+
+        if audio_total_duration == 0:
+            return SegmentsParams(iter([]), 0, 0)
+
+        num_segments = max(1, math.ceil(audio_total_duration / segment_duration))
+
+        def _segments():
+            start_time = 0
+            for _ in range(num_segments):
+                stop_time = start_time + segment_duration - 1
+                yield SegmentParams(start_time, stop_time)
+                start_time = stop_time + 1
+
+        segments = _segments()
+        segment_size = 0
+        overlap = 0
+    elif job_file_mapping is not None:
         def _segments():
             # It is assumed here that files are already saved ordered in the task
             # Here we just need to create segments by the job sizes
@@ -142,14 +166,27 @@ def _get_task_segment_data(
             data_size = db_task.data.size
 
         segment_size = db_task.segment_size
+        segment_step = segment_size
         if segment_size == 0 or segment_size > data_size:
             segment_size = data_size
+            # Segment step must be more than segment_size + overlap in single-segment tasks
+            # Otherwise a task contains an extra segment
+            segment_step = sys.maxsize
 
-        overlap = min(
-            db_task.overlap if db_task.overlap is not None
-                else 5 if db_task.mode == 'interpolation' else 0,
-            segment_size // 2,
-        )
+        if db_task.data.original_chunk_type == models.DataChoice.AUDIO:
+            if segment_size == 0:
+                raise ValueError("Segment size cannot be zero.")
+
+            overlap = 0
+            segment_size = segment_step
+            # if db_task.overlap is not None:
+            #     overlap = min(db_task.overlap, segment_size  // 2)
+        else:
+            overlap = min(
+                db_task.overlap if db_task.overlap is not None
+                    else 5 if db_task.mode == 'interpolation' else 0,
+                segment_size // 2,
+            )
 
         segments = (
             SegmentParams(start_frame, min(start_frame + segment_size - 1, data_size - 1))
@@ -758,6 +795,12 @@ def _create_thread(
     # Extract input data
     extractor = None
     manifest_index = _get_manifest_frame_indexer()
+    MEDIA_TYPE = None
+    for media_key in media:
+        if len(media[media_key]) > 0:
+            MEDIA_TYPE = media_key
+            break
+
     for media_type, media_files in media.items():
         if not media_files:
             continue
@@ -783,7 +826,7 @@ def _create_thread(
             details['extract_dir'] = db_data.get_upload_dirname()
             upload_dir = db_data.get_upload_dirname()
             db_data.storage = models.StorageChoice.LOCAL
-        if media_type != 'video':
+        if media_type not in {'video', 'audio'}:
             details['sorting_method'] = data['sorting_method'] if not is_media_sorted else models.SortingMethod.PREDEFINED
 
         extractor = MEDIA_TYPES[media_type]['extractor'](**details)
@@ -913,15 +956,14 @@ def _create_thread(
         )
 
     db_task.mode = task_mode
-    db_data.compressed_chunk_type = models.DataChoice.VIDEO if task_mode == 'interpolation' and not data['use_zip_chunks'] else models.DataChoice.IMAGESET
-    db_data.original_chunk_type = models.DataChoice.VIDEO if task_mode == 'interpolation' else models.DataChoice.IMAGESET
-
+    db_data.compressed_chunk_type = models.DataChoice.VIDEO if task_mode == 'interpolation' and MEDIA_TYPE == models.DataChoice.VIDEO and not data['use_zip_chunks'] else models.DataChoice.AUDIO if task_mode == 'interpolation' and MEDIA_TYPE == models.DataChoice.AUDIO and not data['use_zip_chunks'] else models.DataChoice.IMAGESET
+    db_data.original_chunk_type = models.DataChoice.VIDEO if task_mode == 'interpolation' and MEDIA_TYPE == models.DataChoice.VIDEO else models.DataChoice.AUDIO if task_mode == 'interpolation' and MEDIA_TYPE == models.DataChoice.AUDIO else models.DataChoice.IMAGESET
     def update_progress(progress):
         progress_animation = '|/-\\'
         if not hasattr(update_progress, 'call_counter'):
             update_progress.call_counter = 0
 
-        status_message = 'CVAT is preparing data chunks'
+        status_message = f"{'Audino' if db_data.compressed_chunk_type == models.DataChoice.AUDIO else 'CVAT'} is preparing data chunks"
         if not progress:
             status_message = '{} {}'.format(status_message, progress_animation[update_progress.call_counter])
         job.meta['status'] = status_message
@@ -929,11 +971,14 @@ def _create_thread(
         job.save_meta()
         update_progress.call_counter = (update_progress.call_counter + 1) % len(progress_animation)
 
-    compressed_chunk_writer_class = Mpeg4CompressedChunkWriter if db_data.compressed_chunk_type == models.DataChoice.VIDEO else ZipCompressedChunkWriter
+    compressed_chunk_writer_class = Mpeg4CompressedChunkWriter if db_data.compressed_chunk_type == models.DataChoice.VIDEO else AudioChunkWriter if db_data.compressed_chunk_type == models.DataChoice.AUDIO else ZipCompressedChunkWriter
     if db_data.original_chunk_type == models.DataChoice.VIDEO:
         original_chunk_writer_class = Mpeg4ChunkWriter
         # Let's use QP=17 (that is 67 for 0-100 range) for the original chunks, which should be visually lossless or nearly so.
         # A lower value will significantly increase the chunk size with a slight increase of quality.
+        original_quality = 67
+    elif db_data.original_chunk_type == models.DataChoice.AUDIO:
+        original_chunk_writer_class = AudioChunkWriter
         original_quality = 67
     else:
         original_chunk_writer_class = ZipChunkWriter
@@ -945,19 +990,76 @@ def _create_thread(
     compressed_chunk_writer = compressed_chunk_writer_class(db_data.image_quality, **kwargs)
     original_chunk_writer = original_chunk_writer_class(original_quality, **kwargs)
 
-    # calculate chunk size if it isn't specified
-    if db_data.chunk_size is None:
-        if isinstance(compressed_chunk_writer, ZipCompressedChunkWriter):
-            first_image_idx = db_data.start_frame
-            if not is_data_in_cloud:
-                w, h = extractor.get_image_size(first_image_idx)
-            else:
-                img_properties = manifest[first_image_idx]
-                w, h = img_properties['width'], img_properties['height']
-            area = h * w
-            db_data.chunk_size = max(2, min(72, 36 * 1920 * 1080 // area))
+    def get_file_encoding(file_path):
+        import chardet
+
+        with open(file_path, 'rb') as f:
+            rawdata = f.read(1024)
+        result = chardet.detect(rawdata)
+        encoding = result['encoding']
+
+        return encoding
+
+    def get_audio_duration(file_path):
+        encoding=get_file_encoding(file_path)
+        slogger.glob.debug("ENCODING")
+        slogger.glob.debug(encoding)
+        # Open the audio file
+        if encoding:
+            container = av.open(file_path, metadata_encoding=encoding)
         else:
-            db_data.chunk_size = 36
+            container = av.open(file_path)
+
+        # Get the first audio stream
+        audio_stream = next((stream for stream in container.streams if stream.codec.type == 'audio'), None)
+
+        if not audio_stream:
+            # print("Error: No audio stream found in the file.")
+            return None
+
+        # Get the duration in seconds based on stream information
+        duration_milliseconds = int(audio_stream.duration * audio_stream.time_base * 1000)
+
+        # Close the container
+        container.close()
+
+        return duration_milliseconds
+
+    db_task.audio_total_duration = None
+
+    # calculate chunk size if it isn't specified
+    if MEDIA_TYPE == "audio":
+        segment_duration = db_task.segment_duration if db_task.segment_duration is not None else 600000
+        db_task.audio_total_duration = get_audio_duration(details['source_path'][0])
+        # db_task.data.audio_total_duration = 720000 #get_audio_duration(details['source_path'][0])
+        total_audio_frames = extractor.get_total_frames()
+        num_frames_per_millisecond = total_audio_frames / db_task.audio_total_duration
+
+        if segment_duration == 0:
+            segment_duration = db_task.audio_total_duration
+            # db_task.segment_size = 0
+            # db_data.chunk_size = db_task.audio_total_duration*num_frames_per_millisecond
+
+        num_frames_per_segment_duration = num_frames_per_millisecond*segment_duration
+        db_task.segment_size = int(round(num_frames_per_segment_duration))
+
+        # num_segments = max(1, int(math.ceil(db_task.audio_total_duration / segment_duration)))
+
+        # Default chunk size = entire frames
+        db_data.chunk_size = db_task.segment_size #db_task.data.size
+    else:
+        if db_data.chunk_size is None:
+            if isinstance(compressed_chunk_writer, ZipCompressedChunkWriter):
+                first_image_idx = db_data.start_frame
+                if not is_data_in_cloud:
+                    w, h = extractor.get_image_size(first_image_idx)
+                else:
+                    img_properties = manifest[first_image_idx]
+                    w, h = img_properties['width'], img_properties['height']
+                area = h * w
+                db_data.chunk_size = max(2, min(72, 36 * 1920 * 1080 // area))
+            else:
+                db_data.chunk_size = 36
 
     video_path = ""
     video_size = (0, 0)

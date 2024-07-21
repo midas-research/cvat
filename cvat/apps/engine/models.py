@@ -98,6 +98,19 @@ class StageChoice(str, Enum):
     def __str__(self):
         return self.value
 
+class AI_AUDIO_ANNOTATION_CHOICES(str, Enum):
+    NOT_STARTED = 'not started'
+    IN_PROGRESS = 'in progress'
+    COMPLETED = 'completed'
+    FAILED = 'failed'
+
+    @classmethod
+    def choices(cls):
+        return tuple((x.value, x.name) for x in cls)
+
+    def __str__(self):
+        return self.value
+
 class StateChoice(str, Enum):
     NEW = 'new'
     IN_PROGRESS = 'in progress'
@@ -112,6 +125,7 @@ class StateChoice(str, Enum):
         return self.value
 
 class DataChoice(str, Enum):
+    AUDIO = 'audio'
     VIDEO = 'video'
     IMAGESET = 'imageset'
     LIST = 'list'
@@ -261,6 +275,8 @@ class Data(models.Model):
             ext = 'mp4'
         elif chunk_type == DataChoice.IMAGESET:
             ext = 'zip'
+        elif chunk_type == DataChoice.AUDIO:
+            ext = 'wav'
         else:
             ext = 'list'
 
@@ -418,6 +434,8 @@ class Task(TimestampedModel):
         blank=True, on_delete=models.SET_NULL, related_name='+')
     target_storage = models.ForeignKey('Storage', null=True, default=None,
         blank=True, on_delete=models.SET_NULL, related_name='+')
+    audio_total_duration = models.PositiveIntegerField(null=True, default=None)
+    segment_duration = models.PositiveIntegerField(null=True, default=None)
 
     # Extend default permission model
     class Meta:
@@ -677,6 +695,9 @@ class Job(TimestampedModel):
 
     type = models.CharField(max_length=32, choices=JobType.choices(),
         default=JobType.ANNOTATION)
+    ai_audio_annotation_status = models.CharField(max_length=32, choices=AI_AUDIO_ANNOTATION_CHOICES.choices(), default=AI_AUDIO_ANNOTATION_CHOICES.NOT_STARTED)
+    ai_audio_annotation_task_id = models.CharField(max_length=100, default="", null=True, blank=True)
+    ai_audio_annotation_error_msg = models.CharField(max_length=4096, default="", null=True, blank=True)
 
     def get_target_storage(self) -> Optional[Storage]:
         return self.segment.task.target_storage
@@ -914,9 +935,25 @@ class Annotation(models.Model):
     group = models.PositiveIntegerField(null=True)
     source = models.CharField(max_length=16, choices=SourceType.choices(),
         default=str(SourceType.MANUAL), null=True)
+    transcript = models.TextField(default="")
+    gender = models.TextField(default="")
+    age = models.TextField(default="")
+    locale = models.TextField(default="en")
+    accent = models.TextField(default="")
+    emotion = models.TextField(default="")
 
     class Meta:
         abstract = True
+        default_permissions = ()
+
+class AIAudioAnnotation(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    job = models.ForeignKey(Job, on_delete=models.CASCADE)
+    start = models.FloatField(blank=False, null=False)
+    end = models.FloatField(blank=False, null=False)
+    text = models.TextField(blank=False, null=False)
+
+    class Meta:
         default_permissions = ()
 
 class Shape(models.Model):
@@ -926,6 +963,12 @@ class Shape(models.Model):
     z_order = models.IntegerField(default=0)
     points = FloatArrayField(default=[])
     rotation = FloatField(default=0)
+    transcript = models.TextField(default="")
+    gender = models.TextField(default="")
+    age = models.TextField(default="")
+    locale = models.TextField(default="")
+    accent = models.TextField(default="")
+    emotion = models.TextField(default="")
 
     class Meta:
         abstract = True

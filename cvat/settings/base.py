@@ -199,7 +199,7 @@ MIDDLEWARE = [
     'allauth.account.middleware.AccountMiddleware',
 ]
 
-UI_URL = ''
+UI_URL = os.getenv('UI_URL', '')
 
 STATICFILES_FINDERS = [
     'django.contrib.staticfiles.finders.FileSystemFinder',
@@ -257,9 +257,9 @@ ACCOUNT_AUTHENTICATION_METHOD = 'username_email'
 
 # set UI url to redirect after a successful e-mail confirmation
 #changed from '/auth/login' to '/auth/email-confirmation' for email confirmation message
-ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL = '/auth/email-confirmation'
-ACCOUNT_EMAIL_VERIFICATION_SENT_REDIRECT_URL = '/auth/email-verification-sent'
-INCORRECT_EMAIL_CONFIRMATION_URL = '/auth/incorrect-email-confirmation'
+ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL = f'{UI_URL}/auth/email-confirmation'
+ACCOUNT_EMAIL_VERIFICATION_SENT_REDIRECT_URL = f'{UI_URL}/auth/email-verification-sent'
+INCORRECT_EMAIL_CONFIRMATION_URL = f'{UI_URL}/auth/incorrect-email-confirmation'
 
 # Django-RQ
 # https://github.com/rq/django-rq
@@ -558,6 +558,7 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
     'upload-finish',
     'upload-multiple',
     'x-organization',
+    'upload-metadata',
 ]
 
 TUS_MAX_FILE_SIZE = 26843545600 # 25gb

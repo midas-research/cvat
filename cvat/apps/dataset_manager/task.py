@@ -3,6 +3,16 @@
 #
 # SPDX-License-Identifier: MIT
 
+import json
+import math
+import soundfile
+import shutil
+import pandas as pd
+import uuid
+import zipfile
+from pydub import AudioSegment
+from scipy.io import wavfile
+import numpy as np
 import os
 from collections import OrderedDict
 from copy import deepcopy
@@ -15,6 +25,9 @@ from django.db.models.query import Prefetch
 from django.conf import settings
 from rest_framework.exceptions import ValidationError
 
+from cvat.apps.engine.models import Job, AttributeSpec
+from cvat.apps.engine.frame_provider import FrameProvider
+from cvat.apps.engine.log import ServerLogManager
 from cvat.apps.engine import models, serializers
 from cvat.apps.engine.plugins import plugin_decorator
 from cvat.apps.engine.log import DatasetLogManager
@@ -27,6 +40,7 @@ from cvat.apps.dataset_manager.formats.registry import make_exporter, make_impor
 from cvat.apps.dataset_manager.util import add_prefetch_fields, bulk_create, get_cached
 
 dlogger = DatasetLogManager()
+slogger = ServerLogManager(__name__)
 
 class dotdict(OrderedDict):
     """dot.notation access to dictionary attributes"""
@@ -541,6 +555,12 @@ class JobAnnotation:
             'rotation',
             'points',
             'parent',
+            'transcript',
+            'gender',
+            'age',
+            'locale',
+            'accent',
+            'emotion',
             'labeledshapeattributeval__spec_id',
             'labeledshapeattributeval__value',
             'labeledshapeattributeval__id',
@@ -888,6 +908,326 @@ def export_job(job_id, dst_file, format_name, server_url=None, save_images=False
     exporter = make_exporter(format_name)
     with open(dst_file, 'wb') as f:
         job.export(f, exporter, host=server_url, save_images=save_images)
+
+def jobChunkPathGetter(db_data, start, stop, task_dimension, data_quality, data_num, job):
+    # db_data = Task Data
+    frame_provider = FrameProvider(db_data, task_dimension)
+
+    # self.type = data_type
+    number = int(data_num) if data_num is not None else None
+
+    quality = FrameProvider.Quality.COMPRESSED \
+            if data_quality == 'compressed' else FrameProvider.Quality.ORIGINAL
+
+    path = os.path.realpath(frame_provider.get_chunk(number, quality))
+    # pylint: disable=superfluous-parens
+
+    # return {"start_chunk" : start_chunk, "stop_chunk" : stop_chunk}
+
+    return path
+
+def chunk_annotation_audio(concat_array, output_folder, annotations):
+    # Convert NumPy array to AudioSegment
+    sr = 44100 # sampling rate
+    audio_segment = AudioSegment(concat_array.tobytes(), frame_rate=sr, channels=1, sample_width=4)
+
+    try:
+        y = audio_segment.get_array_of_samples()
+    except Exception:
+        return None
+
+    data = []
+
+    for _, shape in enumerate(annotations, 1):
+
+        start_time = min(shape['points'][:2])
+        end_time = max(shape['points'][2:])
+
+        # Convert time points to sample indices
+        start_sample = int(start_time * sr)
+        end_sample = int(end_time * sr)
+
+        # Chunk the audio
+        chunk = y[start_sample:end_sample]
+
+        clip_uuid = str(uuid.uuid4())
+        output_file = os.path.join(output_folder, f"{clip_uuid}.mp3")
+        soundfile.write(output_file, chunk, sr)
+
+        data.append(output_file)
+
+    return data
+
+def create_annotation_clips_zip(annotation_audio_chunk_file_paths, meta_data_file_path, output_folder, dst_file):
+    data_folder = os.path.join(output_folder, 'data')
+    clips_folder = os.path.join(data_folder, 'clips')
+    os.makedirs(clips_folder, exist_ok=True)
+
+    # Copy audio files to clips folder
+    for audio_file_path in annotation_audio_chunk_file_paths:
+        clip_filename = os.path.basename(audio_file_path)
+        shutil.copy(audio_file_path, os.path.join(clips_folder, clip_filename))
+
+    # Copy meta data file
+    shutil.copy(meta_data_file_path, os.path.join(data_folder, "data.tsv"))
+
+    # Create zip file
+    zip_filename = os.path.join(output_folder, 'common_voice.zip')
+    with zipfile.ZipFile(zip_filename, 'w') as zipf:
+        for root, _, files in os.walk(data_folder):
+            for file in files:
+                file_path = os.path.join(root, file)
+                zipf.write(file_path, arcname=os.path.relpath(file_path, data_folder))
+
+    # Clean up temporary clips folder
+    shutil.rmtree(data_folder)
+
+    # Move the zip to the dst_file location
+    shutil.move(zip_filename, dst_file)
+
+def get_np_audio_array_from_job(job_id):
+
+    with transaction.atomic():
+        job = JobAnnotation(job_id)
+        job.init_from_db()
+
+    job_data_chunk_size = job.db_job.segment.task.data.chunk_size
+    task_dimension = job.db_job.segment.task.dimension
+
+    start = job.start_frame/job_data_chunk_size
+    stop = job.stop_frame/job_data_chunk_size
+
+    audio_array_buffer = []
+    for i in range(math.trunc(start), math.trunc(stop)+1):
+        db_job = job.db_job
+        # data_type = "chunk"
+        data_num = i
+        data_quality = 'compressed'
+
+        chunk_path = jobChunkPathGetter(job.db_job.segment.task.data, job.start_frame, job.stop_frame, task_dimension, data_quality, data_num, db_job)
+
+        _, audio_data = wavfile.read(chunk_path)
+
+        # Convert the audio data to a NumPy array with dtype np.int16
+        audio_data_int16 = np.array(audio_data, dtype=np.int16)
+
+        audio_array_buffer.append(audio_data_int16)
+
+    concat_array = np.concatenate(audio_array_buffer, axis=0)
+
+    return concat_array
+
+def get_audio_job_export_data(job_id, dst_file, job, temp_dir_base, temp_dir):
+
+    concat_array = get_np_audio_array_from_job(job_id)
+
+    final_data = []
+
+    # All Annotations
+    annotations = job.data["shapes"]
+
+    job_details = Job.objects.get(id=job_id)
+    labels_queryset = job_details.get_labels()
+    labels_list = list(labels_queryset.values())
+
+    labels_mapping = {}
+
+    for label in labels_list:
+        labels_mapping[label["id"]] = label
+
+        label_attributes_queryset = AttributeSpec.objects.filter(label=label["id"])
+
+        attributes_list = list(label_attributes_queryset.values())
+
+        labels_mapping[label["id"]]["attributes"] = {}
+
+        for attribute in attributes_list:
+            labels_mapping[label["id"]]["attributes"][attribute["id"]] = attribute
+
+        slogger.glob.debug("JOB LABELS ATTRIBUTES")
+        slogger.glob.debug(json.dumps(attributes_list))
+
+
+    slogger.glob.debug("JOB LABELS")
+    slogger.glob.debug(json.dumps(labels_list))
+
+    # audio_file_path = os.path.join(temp_dir, str(job_id) + ".wav")
+    # with wave.open(audio_file_path, 'wb') as wave_file:
+    #     wave_file.setnchannels(1)
+    #     wave_file.setsampwidth(4)
+    #     wave_file.setframerate(44100)
+    #     wave_file.writeframes(concat_array)
+
+    annotation_audio_chunk_file_paths = chunk_annotation_audio(concat_array, temp_dir, annotations)
+
+    for i, annotation in enumerate(annotations):
+        entry = {
+            "path": os.path.basename(annotation_audio_chunk_file_paths[i]),
+            "sentence": annotation.get("transcript", ""),
+            "age": annotation.get("age", ""),
+            "gender": annotation.get("gender", ""),
+            "accents": annotation.get("accent", ""),
+            "locale": annotation.get("locale", ""),
+            "emotion": annotation.get("emotion", ""),
+            "label": labels_mapping[annotation["label_id"]]["name"],
+            "start": annotation["points"][0],
+            "end": annotation["points"][3]
+        }
+
+        attributes = annotation.get("attributes", [])
+        for idx, attr in enumerate(attributes):
+            annotation_attribute_id = attr.get("spec_id", "")
+            label_attributes = labels_mapping[annotation["label_id"]].get("attributes", {})
+            annotation_attribute = label_attributes.get(annotation_attribute_id, {})
+            attribute_name = annotation_attribute.get("name", f"attribute_{idx}_name")
+            attribute_val = attr.get("value", "")
+
+            entry[f"attribute_{idx+1}_name"] = attribute_name
+            entry[f"attribute_{idx+1}_value"] = attribute_val
+
+        final_data.append(entry)
+
+    slogger.glob.debug("JOB ANNOTATION DATA")
+    slogger.glob.debug(json.dumps(final_data))
+    slogger.glob.debug("All ANNOTATIONs DATA")
+    slogger.glob.debug(json.dumps(annotations))
+    return final_data, annotation_audio_chunk_file_paths
+
+def convert_annotation_data_format(data, format_name):
+    if format_name == "Common Voice":
+        return data
+    elif format_name == "Librispeech":
+        formatted_data = []
+        for entry in data:
+            formatted_entry = {
+                "chapter_id": "",
+                "file": entry["path"],
+                "id": str(uuid.uuid4()),
+                "speaker_id": "",
+                "text": entry["sentence"],
+                "label": entry["label"],
+                "start": entry["start"],
+                "end": entry["end"]
+            }
+            attribute_keys = [key for key in entry.keys() if key.startswith("attribute_")]
+            for key in attribute_keys:
+                formatted_entry[key] = entry[key]
+            formatted_data.append(formatted_entry)
+        return formatted_data
+    elif format_name == "VoxPopuli":
+        language_id_mapping = {"en": 0}
+        formatted_data = []
+        for entry in data:
+            formatted_entry = {
+                "audio_id": str(uuid.uuid4()),
+                "language": language_id_mapping.get(entry["locale"], None),
+                "audio_path": entry["path"],
+                "raw_text": entry["sentence"],
+                "normalized_text": entry["sentence"],
+                "gender": entry["gender"],
+                "speaker_id": "",
+                "is_gold_transcript": False,
+                "accent": entry["accents"],
+                "label": entry["label"],
+                "start": entry["start"],
+                "end": entry["end"]
+            }
+            attribute_keys = [key for key in entry.keys() if key.startswith("attribute_")]
+            for key in attribute_keys:
+                formatted_entry[key] = entry[key]
+            formatted_data.append(formatted_entry)
+        return formatted_data
+    elif format_name == "Ted-Lium":
+        formatted_data = []
+        for entry in data:
+            formatted_entry = {
+                "file": entry["path"],
+                "text": entry["sentence"],
+                "gender": entry["gender"],
+                "id": str(uuid.uuid4()),
+                "speaker_id": "",
+                "label": entry["label"],
+                "start": entry["start"],
+                "end": entry["end"]
+            }
+            attribute_keys = [key for key in entry.keys() if key.startswith("attribute_")]
+            for key in attribute_keys:
+                formatted_entry[key] = entry[key]
+            formatted_data.append(formatted_entry)
+        return formatted_data
+    return data
+
+def export_audino_job(job_id, dst_file, format_name, server_url=None, save_images=False):
+
+    # For big tasks dump function may run for a long time and
+    # we dont need to acquire lock after the task has been initialized from DB.
+    # But there is the bug with corrupted dump file in case 2 or
+    # more dump request received at the same time:
+    # https://github.com/opencv/cvat/issues/217
+    with transaction.atomic():
+        job = JobAnnotation(job_id)
+        job.init_from_db()
+
+    # Get Temporary directory of the job
+    temp_dir_base = job.db_job.get_tmp_dirname()
+
+    os.makedirs(temp_dir_base, exist_ok=True)
+
+    with TemporaryDirectory(dir=temp_dir_base) as temp_dir:
+
+        final_data, annotation_audio_chunk_file_paths = get_audio_job_export_data(job_id, dst_file, job, temp_dir_base, temp_dir)
+
+        # Convert the data into a format
+        final_data = convert_annotation_data_format(final_data, format_name)
+
+        df = pd.DataFrame(final_data)
+
+        # Saving the metadata file
+        meta_data_file_path = os.path.join(temp_dir_base, str(job_id) + ".tsv")
+        df.to_csv(meta_data_file_path, sep='\t', index=False)
+
+        create_annotation_clips_zip(annotation_audio_chunk_file_paths, meta_data_file_path, temp_dir_base, dst_file)
+
+def export_audino_task(task_id, dst_file, format_name, server_url=None, save_images=False):
+
+    with transaction.atomic():
+        task = TaskAnnotation(task_id)
+        task.init_from_db()
+
+    # Get Temporary directory of the job
+    temp_dir_base = task.db_task.get_tmp_dirname()
+
+    os.makedirs(temp_dir_base, exist_ok=True)
+
+    task_jobs = task.db_jobs
+
+    final_task_data = []
+    final_annotation_chunk_paths = []
+    with TemporaryDirectory(dir=temp_dir_base) as temp_dir:
+        for job in task_jobs:
+
+            with transaction.atomic():
+                job = JobAnnotation(job.id)
+                job.init_from_db()
+
+            final_data, annotation_audio_chunk_file_paths = get_audio_job_export_data(job.db_job.id, dst_file, job, temp_dir_base, temp_dir)
+
+            # Convert the data into a format
+            final_data = convert_annotation_data_format(final_data, format_name)
+
+            final_task_data.append(final_data)
+            final_annotation_chunk_paths.append(annotation_audio_chunk_file_paths)
+
+        # Saving the metadata file
+        meta_data_file_path = os.path.join(temp_dir_base, str(task_id) + ".tsv")
+
+        final_task_data_flatten = [item for sublist in final_task_data for item in sublist]
+        final_annotation_chunk_paths_flatten = [item for sublist in final_annotation_chunk_paths for item in sublist]
+
+        df = pd.DataFrame(final_task_data_flatten)
+        df.to_csv(meta_data_file_path, sep='\t', index=False)
+
+        create_annotation_clips_zip(final_annotation_chunk_paths_flatten, meta_data_file_path, temp_dir_base, dst_file)
 
 @silk_profile(name="GET task data")
 @transaction.atomic

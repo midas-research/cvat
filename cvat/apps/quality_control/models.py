@@ -24,6 +24,8 @@ class AnnotationConflictType(str, Enum):
     MISMATCHING_ATTRIBUTES = "mismatching_attributes"
     MISMATCHING_GROUPS = "mismatching_groups"
     COVERED_ANNOTATION = "covered_annotation"
+    MISMATCHING_EXTRA_PARAMETERS = "mismatching_extra_parameters"
+    MISMATCHING_TRANSCRIPT = "mismatching_transcript"
 
     def __str__(self) -> str:
         return self.value
@@ -134,6 +136,8 @@ class AnnotationConflict(models.Model):
     frame = models.PositiveIntegerField()
     type = models.CharField(max_length=32, choices=AnnotationConflictType.choices())
     severity = models.CharField(max_length=32, choices=AnnotationConflictSeverity.choices())
+    word_error_rate = models.FloatField(default=0.0, null=True)
+    character_error_rate = models.FloatField(default=0.0, null=True)
 
     annotation_ids: Sequence[AnnotationId]
 
@@ -181,6 +185,8 @@ class AnnotationId(models.Model):
 class QualitySettings(models.Model):
     task = models.OneToOneField(Task, on_delete=models.CASCADE, related_name="quality_settings")
 
+    wer_threshold = models.FloatField(default=0.3, null=True)
+    cer_threshold = models.FloatField(default=0.3, null=True)
     iou_threshold = models.FloatField()
     oks_sigma = models.FloatField()
     line_thickness = models.FloatField()
@@ -199,6 +205,7 @@ class QualitySettings(models.Model):
     panoptic_comparison = models.BooleanField()
 
     compare_attributes = models.BooleanField()
+    compare_extra_parameters = models.BooleanField(default=False, null=True)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         defaults = deepcopy(self.get_defaults())
