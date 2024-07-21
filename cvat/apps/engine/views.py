@@ -2250,6 +2250,22 @@ class AIAudioAnnotationViewSet(viewsets.ModelViewSet):
             ai_annotation_port = int(os.getenv('AI_ANNOTATION_PORT', "8000"))
             url = f"http://{ai_annotation_host}:{ai_annotation_port}/transcript"
             r = requests.post(url, json={ "jobId" : job_id, "lang" : lang, "authToken" : authHeader, "background_task_id" : background_task_id})
+            try:
+                r = requests.post(
+                    url,
+                    json={
+                        "jobId": job_id,
+                        "lang": lang,
+                        "authToken": authHeader,
+                        "background_task_id": background_task_id
+                    },
+                    timeout=60  # Timeout in seconds
+                )
+                # r.raise_for_status()  # Raises an HTTPError for bad responses (4xx or 5xx)
+            except requests.exceptions.Timeout:
+                slogger.glob.error("The request to %s timed out", url)
+            except requests.exceptions.RequestException as e:
+                slogger.glob.error("An error occurred while making the request: %s", e)
 
             return Response({'success': True}, status=status.HTTP_200_OK)
 

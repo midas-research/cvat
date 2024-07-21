@@ -151,7 +151,7 @@ class AnnotationConflict(_Serializable):
             type=AnnotationConflictType(d["type"]),
             annotation_ids=list(AnnotationId.from_dict(v) for v in d["annotation_ids"]),
             word_error_rate=d.get("word_error_rate", 0.0),
-            character_error_rate=d.get("character_error_rate",0.0),
+            character_error_rate=d.get("character_error_rate", 0.0),
         )
 
 
@@ -2180,7 +2180,7 @@ class AudioDatasetComparator:
             obj_id=source_ann_id,
             type=ann_type,
             shape_type=shape_type,
-            job_id=source_data_provider.job_id
+            job_id=source_data_provider.job_id,
         )
 
     def match_annotations(self, ds_annotations, gt_annotations):
@@ -2209,7 +2209,6 @@ class AudioDatasetComparator:
             for gt_ann in gt_annotations
             if job_start_time <= gt_ann["points"][0] and gt_ann["points"][3] <= job_end_time
         ]
-
 
         matches = []
         mismatches = []
@@ -2256,7 +2255,9 @@ class AudioDatasetComparator:
 
                 if wer < self.settings.wer_threshold and cer < self.settings.cer_threshold:
                     mismatches.append(best_mismatch_pair)
-                    pairwise_distances[(id(best_mismatch_pair[0]), id(best_mismatch_pair[1]))] = best_mismatch_iou
+                    pairwise_distances[(id(best_mismatch_pair[0]), id(best_mismatch_pair[1]))] = (
+                        best_mismatch_iou
+                    )
                     if best_mismatch_pair[0] in gt_unmatched:
                         gt_unmatched.remove(best_mismatch_pair[0])
                     if best_mismatch_pair[1] in ds_unmatched:
@@ -2264,7 +2265,7 @@ class AudioDatasetComparator:
 
         return [matches, mismatches, gt_unmatched, ds_unmatched, pairwise_distances]
 
-    def match_attrs(self, ann_a, ann_b):  #ann_a -> gt, ann_b -> ds
+    def match_attrs(self, ann_a, ann_b):
         a_attrs = ann_a["attributes"]
         b_attrs = ann_b["attributes"]
 
@@ -2328,7 +2329,7 @@ class AudioDatasetComparator:
                     d[i][j] = min(
                         d[i - 1][j] + 1,  # deletion
                         d[i][j - 1] + 1,  # insertion
-                        d[i - 1][j - 1] + 1  # substitution
+                        d[i - 1][j - 1] + 1,  # substitution
                     )
 
         wer = d[len(gt_words)][len(ds_words)] / float(len(gt_words))
@@ -2366,7 +2367,7 @@ class AudioDatasetComparator:
                     d[i][j] = min(
                         d[i - 1][j] + 1,  # deletion
                         d[i][j - 1] + 1,  # insertion
-                        d[i - 1][j - 1] + 1  # substitution
+                        d[i - 1][j - 1] + 1,  # substitution
                     )
 
         cer = d[len(gt_chars)][len(ds_chars)] / float(len(gt_chars))
@@ -2516,7 +2517,7 @@ class AudioDatasetComparator:
                     total_count=total_shapes_count,
                     ds_count=ds_shapes_count,
                     gt_count=gt_shapes_count,
-                    mean_iou=0.7, # need to fix
+                    mean_iou=0.7,  # need to fix
                 ),
                 label=ComparisonReportAnnotationLabelSummary(
                     valid_count=valid_labels_count,
@@ -2850,7 +2851,7 @@ class QualityReportUpdateManager:
         for job in jobs:
             job_data_provider = job_data_providers[job.id]
             if task.data.original_chunk_type == DataChoice.AUDIO:
-                offset = ind * job_duration # required only when jobs are intersecting
+                offset = ind * job_duration  # required only when jobs are intersecting
                 start = job_data_provider.job_data.start
                 end = job_data_provider.job_data.stop - 1
                 gt_frame_list = list(gt_job_frames)
@@ -2860,9 +2861,10 @@ class QualityReportUpdateManager:
 
                 comparator = AudioDatasetComparator(
                     job_data_provider,
-                    gt_job_data_provider,offset,
+                    gt_job_data_provider,
+                    offset,
                     job_duration,
-                    settings=quality_params
+                    settings=quality_params,
                 )
                 job_comparison_reports[job.id] = comparator.generate_audio_report()
                 ind += 1
@@ -2934,7 +2936,7 @@ class QualityReportUpdateManager:
         self,
         task: Task,
         job_reports: Dict[int, ComparisonReport],
-        gt_job_count: Optional[int] = None
+        gt_job_count: Optional[int] = None,
     ) -> ComparisonReport:
         # The task dataset can be different from any jobs' dataset because of frame overlaps
         # between jobs, from which annotations are merged to get the task annotations.
@@ -3016,12 +3018,12 @@ class QualityReportUpdateManager:
                 conflicts_by_type=Counter(c.type for c in task_conflicts),
                 annotations=task_annotations_summary,
                 annotation_components=task_ann_components_summary,
-                word_error_rate = (
+                word_error_rate=(
                     task_word_error_rate / gt_job_count
                     if gt_job_count is not None and gt_job_count > 0
                     else 0.0
                 ),
-                character_error_rate = (
+                character_error_rate=(
                     task_character_error_rate / gt_job_count
                     if gt_job_count is not None and gt_job_count > 0
                     else 0.0

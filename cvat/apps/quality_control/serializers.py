@@ -29,7 +29,7 @@ class AnnotationConflictSerializer(serializers.ModelSerializer):
             "report_id",
             "severity",
             "word_error_rate",
-            "character_error_rate"
+            "character_error_rate",
         )
         read_only_fields = fields
 
