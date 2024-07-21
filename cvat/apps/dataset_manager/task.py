@@ -974,7 +974,7 @@ def create_annotation_clips_zip(annotation_audio_chunk_file_paths, meta_data_fil
     # Create zip file
     zip_filename = os.path.join(output_folder, 'common_voice.zip')
     with zipfile.ZipFile(zip_filename, 'w') as zipf:
-        for root, dirs, files in os.walk(data_folder):
+        for root, _, files in os.walk(data_folder):
             for file in files:
                 file_path = os.path.join(root, file)
                 zipf.write(file_path, arcname=os.path.relpath(file_path, data_folder))
@@ -1006,7 +1006,7 @@ def get_np_audio_array_from_job(job_id):
 
         chunk_path = jobChunkPathGetter(job.db_job.segment.task.data, job.start_frame, job.stop_frame, task_dimension, data_quality, data_num, db_job)
 
-        sample_rate, audio_data = wavfile.read(chunk_path)
+        _, audio_data = wavfile.read(chunk_path)
 
         # Convert the audio data to a NumPy array with dtype np.int16
         audio_data_int16 = np.array(audio_data, dtype=np.int16)
@@ -1060,24 +1060,24 @@ def get_audio_job_export_data(job_id, dst_file, job, temp_dir_base, temp_dir):
 
     annotation_audio_chunk_file_paths = chunk_annotation_audio(concat_array, temp_dir, annotations)
 
-    for i in range(0, len(annotations)):
+    for i, annotation in enumerate(annotations):
         entry = {
             "path": os.path.basename(annotation_audio_chunk_file_paths[i]),
-            "sentence": annotations[i].get("transcript", ""),
-            "age": annotations[i].get("age", ""),
-            "gender": annotations[i].get("gender", ""),
-            "accents": annotations[i].get("accent", ""),
-            "locale": annotations[i].get("locale", ""),
-            "emotion": annotations[i].get("emotion", ""),
-            "label": labels_mapping[annotations[i]["label_id"]]["name"],
-            "start": annotations[i]["points"][0],
-            "end": annotations[i]["points"][3]
+            "sentence": annotation.get("transcript", ""),
+            "age": annotation.get("age", ""),
+            "gender": annotation.get("gender", ""),
+            "accents": annotation.get("accent", ""),
+            "locale": annotation.get("locale", ""),
+            "emotion": annotation.get("emotion", ""),
+            "label": labels_mapping[annotation["label_id"]]["name"],
+            "start": annotation["points"][0],
+            "end": annotation["points"][3]
         }
 
-        attributes = annotations[i].get("attributes", [])
+        attributes = annotation.get("attributes", [])
         for idx, attr in enumerate(attributes):
             annotation_attribute_id = attr.get("spec_id", "")
-            label_attributes = labels_mapping[annotations[i]["label_id"]].get("attributes", {})
+            label_attributes = labels_mapping[annotation["label_id"]].get("attributes", {})
             annotation_attribute = label_attributes.get(annotation_attribute_id, {})
             attribute_name = annotation_attribute.get("name", f"attribute_{idx}_name")
             attribute_val = attr.get("value", "")
@@ -1089,7 +1089,7 @@ def get_audio_job_export_data(job_id, dst_file, job, temp_dir_base, temp_dir):
 
     slogger.glob.debug("JOB ANNOTATION DATA")
     slogger.glob.debug(json.dumps(final_data))
-    slogger.glob.debug("All  ANNOTATIONs DATA")
+    slogger.glob.debug("All ANNOTATIONs DATA")
     slogger.glob.debug(json.dumps(annotations))
     return final_data, annotation_audio_chunk_file_paths
 

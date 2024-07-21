@@ -2073,7 +2073,7 @@ class JobViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mixins.CreateMo
         data_start_frame = db_data.start_frame + start_frame * frame_step
         data_stop_frame = min(db_data.stop_frame, db_data.start_frame + stop_frame * frame_step)
         frame_set = db_job.segment.frame_set
-        segment_size = db_job.segment.task.segment_size
+        # segment_size = db_job.segment.task.segment_size
 
         if request.method == 'PATCH':
             serializer = DataMetaWriteSerializer(instance=db_data, data=request.data)
@@ -2260,7 +2260,7 @@ class AIAudioAnnotationViewSet(viewsets.ModelViewSet):
                     },
                     timeout=60  # Timeout in seconds
                 )
-                # r.raise_for_status()  # Raises an HTTPError for bad responses (4xx or 5xx)
+                r.raise_for_status()  # Raises an HTTPError for bad responses (4xx or 5xx)
             except requests.exceptions.Timeout:
                 slogger.glob.error("The request to %s timed out", url)
             except requests.exceptions.RequestException as e:

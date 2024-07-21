@@ -514,7 +514,7 @@ class AudioReader(IMediaReader):
             stream = container.streams.audio[0]
             stream.thread_type = 'AUTO'
             for packet in container.demux(stream):
-                for image in packet.decode():
+                for _ in packet.decode():
                     total_frame += 1
 
         return total_frame

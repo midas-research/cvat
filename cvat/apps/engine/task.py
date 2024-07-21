@@ -1043,7 +1043,7 @@ def _create_thread(
         num_frames_per_segment_duration = num_frames_per_millisecond*segment_duration
         db_task.segment_size = int(round(num_frames_per_segment_duration))
 
-        num_segments = max(1, int(math.ceil(db_task.audio_total_duration / segment_duration)))
+        # num_segments = max(1, int(math.ceil(db_task.audio_total_duration / segment_duration)))
 
         # Default chunk size = entire frames
         db_data.chunk_size = db_task.segment_size #db_task.data.size

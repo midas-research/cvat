@@ -2541,7 +2541,7 @@ class AudioDatasetComparator:
 
         label_id_idx_map = {}
         label_names = []
-        for i, label in enumerate(labels_queryset):
+        for _, label in enumerate(labels_queryset):
             if not label.parent:
                 label_id_idx_map[label.id] = len(label_names)
                 label_names.append(label.name)
@@ -2842,7 +2842,8 @@ class QualityReportUpdateManager:
             quality_params = self._get_task_quality_params(task)
 
         job_duration = (
-            ((task.data.chunk_size) * (task.audio_total_duration) / (task.data.stop_frame + 1)) / 1000
+            ((task.data.chunk_size) * (task.audio_total_duration) / (task.data.stop_frame + 1))
+            / 1000
             if task.audio_total_duration
             else 0
         )
