@@ -67,7 +67,7 @@ def export(dst_format, project_id=None, task_id=None, job_id=None, server_url=No
         if task_id is not None:
             logger = slogger.task[task_id]
             db_instance = Task.objects.get(pk=task_id)
-            if(db_instance.data.original_chunk_type == DataChoice.AUDIO):
+            if db_instance.data.original_chunk_type == DataChoice.AUDIO:
                 export_fn = task.export_audino_task
                 export_for = "audio"
             else:
@@ -79,7 +79,7 @@ def export(dst_format, project_id=None, task_id=None, job_id=None, server_url=No
         else:
             logger = slogger.job[job_id]
             db_instance = Job.objects.get(pk=job_id)
-            if(db_instance.segment.task.data.original_chunk_type == DataChoice.AUDIO):
+            if db_instance.segment.task.data.original_chunk_type == DataChoice.AUDIO:
                 export_fn = task.export_audino_job
                 export_for = "audio"
             else:

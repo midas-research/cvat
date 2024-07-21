@@ -933,12 +933,12 @@ def chunk_annotation_audio(concat_array, output_folder, annotations):
 
     try:
         y = audio_segment.get_array_of_samples()
-    except Exception as e:
+    except Exception:
         return None
 
     data = []
 
-    for i, shape in enumerate(annotations, 1):
+    for _, shape in enumerate(annotations, 1):
 
         start_time = min(shape['points'][:2])
         end_time = max(shape['points'][2:])

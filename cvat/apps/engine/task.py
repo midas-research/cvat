@@ -173,7 +173,7 @@ def _get_task_segment_data(
             # Otherwise a task contains an extra segment
             segment_step = sys.maxsize
 
-        if(db_task.data.original_chunk_type == models.DataChoice.AUDIO):
+        if db_task.data.original_chunk_type == models.DataChoice.AUDIO:
             if segment_size == 0:
                 raise ValueError("Segment size cannot be zero.")
 

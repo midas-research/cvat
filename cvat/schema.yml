@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CVAT REST API
-  version: 2.16.0
+  version: 2.16.0.dev20240715135442
   description: REST API for Computer Vision Annotation Tool (CVAT)
   termsOfService: https://www.google.com/policies/terms/
   contact:
@@ -12,6 +12,220 @@ info:
     name: MIT License
     url: https://en.wikipedia.org/wiki/MIT_License
 paths:
+  /api/ai-audio-annotation:
+    get:
+      operationId: ai_audio_annotation_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - ai-audio-annotation
+      security:
+      - sessionAuth: []
+        csrfAuth: []
+        tokenAuth: []
+      - signatureAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAIAudioAnnotationList'
+          description: ''
+    post:
+      operationId: ai_audio_annotation_create
+      tags:
+      - ai-audio-annotation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AIAudioAnnotationRequest'
+        required: true
+      security:
+      - sessionAuth: []
+        csrfAuth: []
+        tokenAuth: []
+      - signatureAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '201':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/AIAudioAnnotation'
+          description: ''
+  /api/ai-audio-annotation/{id}:
+    get:
+      operationId: ai_audio_annotation_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this ai audio annotation.
+        required: true
+      tags:
+      - ai-audio-annotation
+      security:
+      - sessionAuth: []
+        csrfAuth: []
+        tokenAuth: []
+      - signatureAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/AIAudioAnnotation'
+          description: ''
+    put:
+      operationId: ai_audio_annotation_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this ai audio annotation.
+        required: true
+      tags:
+      - ai-audio-annotation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AIAudioAnnotationRequest'
+        required: true
+      security:
+      - sessionAuth: []
+        csrfAuth: []
+        tokenAuth: []
+      - signatureAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/AIAudioAnnotation'
+          description: ''
+    patch:
+      operationId: ai_audio_annotation_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this ai audio annotation.
+        required: true
+      tags:
+      - ai-audio-annotation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAIAudioAnnotationRequest'
+      security:
+      - sessionAuth: []
+        csrfAuth: []
+        tokenAuth: []
+      - signatureAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/AIAudioAnnotation'
+          description: ''
+    delete:
+      operationId: ai_audio_annotation_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this ai audio annotation.
+        required: true
+      tags:
+      - ai-audio-annotation
+      security:
+      - sessionAuth: []
+        csrfAuth: []
+        tokenAuth: []
+      - signatureAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '204':
+          description: No response body
+  /api/ai-audio-annotation/ai-annotate:
+    post:
+      operationId: ai_audio_annotation_create_ai_annotate
+      tags:
+      - ai-audio-annotation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AIAudioAnnotationRequest'
+        required: true
+      security:
+      - sessionAuth: []
+        csrfAuth: []
+        tokenAuth: []
+      - signatureAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/AIAudioAnnotation'
+          description: ''
+  /api/ai-audio-annotation/save:
+    post:
+      operationId: ai_audio_annotation_create_save
+      tags:
+      - ai-audio-annotation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AIAudioAnnotationRequest'
+        required: true
+      security:
+      - sessionAuth: []
+        csrfAuth: []
+        tokenAuth: []
+      - signatureAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/vnd.cvat+json:
+              schema:
+                $ref: '#/components/schemas/AIAudioAnnotation'
+          description: ''
   /api/analytics/reports:
     get:
       operationId: analytics_get_reports
@@ -4186,6 +4400,8 @@ paths:
           - mismatching_attributes
           - mismatching_groups
           - covered_annotation
+          - mismatching_extra_parameters
+          - mismatching_transcript
       tags:
       - quality
       security:
@@ -6647,6 +6863,46 @@ paths:
           description: ''
 components:
   schemas:
+    AIAudioAnnotation:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        start:
+          type: number
+          format: double
+        end:
+          type: number
+          format: double
+        text:
+          type: string
+        job:
+          type: integer
+      required:
+      - end
+      - job
+      - start
+      - text
+    AIAudioAnnotationRequest:
+      type: object
+      properties:
+        start:
+          type: number
+          format: double
+        end:
+          type: number
+          format: double
+        text:
+          type: string
+          minLength: 1
+        job:
+          type: integer
+      required:
+      - end
+      - job
+      - start
+      - text
     About:
       type: object
       properties:
@@ -6670,6 +6926,18 @@ components:
           type: string
       required:
       - organization_slug
+    AiAudioAnnotationStatusEnum:
+      enum:
+      - not started
+      - in progress
+      - completed
+      - failed
+      type: string
+      description: |-
+        * `not started` - NOT_STARTED
+        * `in progress` - IN_PROGRESS
+        * `completed` - COMPLETED
+        * `failed` - FAILED
     AnalyticsReport:
       type: object
       properties:
@@ -6735,6 +7003,16 @@ components:
           allOf:
           - $ref: '#/components/schemas/SeverityEnum'
           readOnly: true
+        word_error_rate:
+          type: number
+          format: double
+          readOnly: true
+          nullable: true
+        character_error_rate:
+          type: number
+          format: double
+          readOnly: true
+          nullable: true
       required:
       - annotation_ids
     AnnotationConflictTypeEnum:
@@ -6747,6 +7025,8 @@ components:
       - mismatching_attributes
       - mismatching_groups
       - covered_annotation
+      - mismatching_extra_parameters
+      - mismatching_transcript
       type: string
       description: |-
         * `missing_annotation` - MISSING_ANNOTATION
@@ -6757,6 +7037,8 @@ components:
         * `mismatching_attributes` - MISMATCHING_ATTRIBUTES
         * `mismatching_groups` - MISMATCHING_GROUPS
         * `covered_annotation` - COVERED_ANNOTATION
+        * `mismatching_extra_parameters` - MISMATCHING_EXTRA_PARAMETERS
+        * `mismatching_transcript` - MISMATCHING_TRANSCRIPT
     AnnotationFileRequest:
       type: object
       properties:
@@ -7004,11 +7286,13 @@ components:
       - operator
     ChunkType:
       enum:
+      - audio
       - video
       - imageset
       - list
       type: string
       description: |-
+        * `audio` - AUDIO
         * `video` - VIDEO
         * `imageset` - IMAGESET
         * `list` - LIST
@@ -8092,6 +8376,18 @@ components:
           allOf:
           - $ref: '#/components/schemas/Storage'
           nullable: true
+        ai_audio_annotation_status:
+          allOf:
+          - $ref: '#/components/schemas/AiAudioAnnotationStatusEnum'
+          readOnly: true
+        ai_audio_annotation_task_id:
+          type: string
+          readOnly: true
+          nullable: true
+        ai_audio_annotation_error_msg:
+          type: string
+          readOnly: true
+          nullable: true
       required:
       - issues
       - labels
@@ -8307,6 +8603,36 @@ components:
         source:
           type: string
           default: manual
+        transcript:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        gender:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        age:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        locale:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        accent:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        emotion:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
         attributes:
           type: array
           items:
@@ -8335,6 +8661,36 @@ components:
           type: string
           minLength: 1
           default: manual
+        transcript:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        gender:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        age:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        locale:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        accent:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        emotion:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
         attributes:
           type: array
           items:
@@ -8384,6 +8740,36 @@ components:
         source:
           type: string
           default: manual
+        transcript:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        gender:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        age:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        locale:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        accent:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        emotion:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
         attributes:
           type: array
           items:
@@ -8439,6 +8825,36 @@ components:
           type: string
           minLength: 1
           default: manual
+        transcript:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        gender:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        age:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        locale:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        accent:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        emotion:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
         attributes:
           type: array
           items:
@@ -8471,6 +8887,36 @@ components:
         source:
           type: string
           default: manual
+        transcript:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        gender:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        age:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        locale:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        accent:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        emotion:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
         shapes:
           type: array
           items:
@@ -8508,6 +8954,36 @@ components:
           type: string
           minLength: 1
           default: manual
+        transcript:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        gender:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        age:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        locale:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        accent:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        emotion:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
         shapes:
           type: array
           items:
@@ -8703,6 +9179,26 @@ components:
           type: object
       required:
       - slug
+    PaginatedAIAudioAnnotationList:
+      type: object
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AIAudioAnnotation'
     PaginatedAnnotationConflictList:
       type: object
       properties:
@@ -9095,6 +9591,20 @@ components:
           minLength: 1
       required:
       - email
+    PatchedAIAudioAnnotationRequest:
+      type: object
+      properties:
+        start:
+          type: number
+          format: double
+        end:
+          type: number
+          format: double
+        text:
+          type: string
+          minLength: 1
+        job:
+          type: integer
     PatchedAnnotationGuideWriteRequest:
       type: object
       properties:
@@ -9376,6 +9886,23 @@ components:
         compare_attributes:
           type: boolean
           description: Enables or disables annotation attribute comparison
+        wer_threshold:
+          type: number
+          format: double
+          nullable: true
+          description: Used for evaluating the Word Error Rate (WER) in transcripts
+            of annotations
+        cer_threshold:
+          type: number
+          format: double
+          nullable: true
+          description: Used for evaluating the Character Error Rate (CER) in transcripts
+            of annotations
+        compare_extra_parameters:
+          type: boolean
+          nullable: true
+          description: Enables or disables annotation extra parameters comparison
+            like Locale, Gender etc
     PatchedTaskWriteRequest:
       type: object
       properties:
@@ -9411,6 +9938,9 @@ components:
         source_storage:
           allOf:
           - $ref: '#/components/schemas/StorageRequest'
+          nullable: true
+        segment_duration:
+          type: integer
           nullable: true
     PatchedUserRequest:
       type: object
@@ -9696,6 +10226,12 @@ components:
           type: object
           additionalProperties:
             type: integer
+        word_error_rate:
+          type: number
+          format: double
+        character_error_rate:
+          type: number
+          format: double
         valid_count:
           type: integer
         ds_count:
@@ -9705,6 +10241,7 @@ components:
         total_count:
           type: integer
       required:
+      - character_error_rate
       - conflict_count
       - conflicts_by_type
       - ds_count
@@ -9715,6 +10252,7 @@ components:
       - total_count
       - valid_count
       - warning_count
+      - word_error_rate
     QualityReportTarget:
       enum:
       - job
@@ -9793,6 +10331,23 @@ components:
         compare_attributes:
           type: boolean
           description: Enables or disables annotation attribute comparison
+        wer_threshold:
+          type: number
+          format: double
+          nullable: true
+          description: Used for evaluating the Word Error Rate (WER) in transcripts
+            of annotations
+        cer_threshold:
+          type: number
+          format: double
+          nullable: true
+          description: Used for evaluating the Character Error Rate (CER) in transcripts
+            of annotations
+        compare_extra_parameters:
+          type: boolean
+          nullable: true
+          description: Enables or disables annotation extra parameters comparison
+            like Locale, Gender etc
     RegisterSerializerEx:
       type: object
       properties:
@@ -10119,6 +10674,36 @@ components:
         source:
           type: string
           default: manual
+        transcript:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        gender:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        age:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        locale:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        accent:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        emotion:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
         attributes:
           type: array
           items:
@@ -10170,6 +10755,36 @@ components:
           type: string
           minLength: 1
           default: manual
+        transcript:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        gender:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        age:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        locale:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        accent:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        emotion:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
         attributes:
           type: array
           items:
@@ -10198,6 +10813,36 @@ components:
         source:
           type: string
           default: manual
+        transcript:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        gender:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        age:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        locale:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        accent:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        emotion:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
         shapes:
           type: array
           items:
@@ -10231,6 +10876,36 @@ components:
           type: string
           minLength: 1
           default: manual
+        transcript:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        gender:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        age:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        locale:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        accent:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
+        emotion:
+          type: string
+          nullable: true
+          default: ''
+          maxLength: 4096
         shapes:
           type: array
           items:
@@ -10427,9 +11102,13 @@ components:
           $ref: '#/components/schemas/JobsSummary'
         labels:
           $ref: '#/components/schemas/LabelsSummary'
+        segment_duration:
+          type: integer
+          nullable: true
       required:
       - jobs
       - labels
+      - segment_duration
     TaskWriteRequest:
       type: object
       properties:
@@ -10474,6 +11153,9 @@ components:
         source_storage:
           allOf:
           - $ref: '#/components/schemas/StorageRequest'
+          nullable: true
+        segment_duration:
+          type: integer
           nullable: true
       required:
       - name

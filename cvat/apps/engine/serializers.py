@@ -702,7 +702,7 @@ class JobWriteSerializer(WriteOnceMixin, serializers.ModelSerializer):
                         f"must be not be greater than the number of the task frames ({size})"
                     )
 
-                if(task.data.original_chunk_type == DataChoice.AUDIO):
+                if task.data.original_chunk_type == DataChoice.AUDIO:
                     num_segments = size // segment_size
                     jobs_frame_list = []
                     for i in range(num_segments):

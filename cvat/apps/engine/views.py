@@ -33,7 +33,6 @@ from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from django_rq.queues import DjangoRQ
-from django.core.mail import send_mail
 from django.contrib.sites.shortcuts import get_current_site
 from django.core.exceptions import ImproperlyConfigured
 
@@ -3271,7 +3270,8 @@ def _import_project_dataset(request, rq_id_template, rq_func, db_obj, format_nam
         summary='Get request details',
         responses={
             '200': RequestSerializer,
-        }
+        },
+        parameters = [OpenApiParameter(name="id", type=str, location=OpenApiParameter.PATH)]
     ),
 )
 class RequestViewSet(viewsets.GenericViewSet):
@@ -3447,6 +3447,7 @@ class RequestViewSet(viewsets.GenericViewSet):
         responses={
             '200': OpenApiResponse(description='The request has been cancelled'),
         },
+        parameters = [OpenApiParameter(name="id", type=str, location=OpenApiParameter.PATH)]
     )
     @method_decorator(never_cache)
     @action(detail=True, methods=['POST'], url_path='cancel')
