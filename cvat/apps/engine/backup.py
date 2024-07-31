@@ -184,6 +184,7 @@ class _TaskBackupBase(_BackupBase):
             'subset',
             'labels',
             'segment_duration',
+            'extra_params',
         }
 
         return self._prepare_meta(allowed_fields, task)

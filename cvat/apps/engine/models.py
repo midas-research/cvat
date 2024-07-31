@@ -436,6 +436,7 @@ class Task(TimestampedModel):
         blank=True, on_delete=models.SET_NULL, related_name='+')
     audio_total_duration = models.PositiveIntegerField(null=True, default=None)
     segment_duration = models.PositiveIntegerField(null=True, default=None)
+    extra_params = models.BooleanField(null=True, default=False)
 
     # Extend default permission model
     class Meta:

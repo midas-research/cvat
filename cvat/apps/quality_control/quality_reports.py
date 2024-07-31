@@ -3123,15 +3123,32 @@ def prepare_report_for_downloading(db_report: models.QualityReport, *, host: str
     comparison_report = ComparisonReport.from_json(db_report.get_json_report())
     serialized_data.update(comparison_report.to_dict())
 
-    for frame_result in serialized_data["frame_results"].values():
-        for conflict in frame_result["conflicts"]:
-            for ann_id in conflict["annotation_ids"]:
-                ann_id["url"] = (
-                    f"{host}tasks/{task_id}/jobs/{ann_id['job_id']}"
-                    f"?frame={conflict['frame_id']}"
-                    f"&type={ann_id['type']}"
-                    f"&serverID={ann_id['obj_id']}"
-                )
+    # Keys to include in the filtered parameters for audio report
+    quality_parameters_for_audio = [
+        "compare_attributes",
+        "compare_extra_parameters",
+        "wer_threshold",
+        "cer_threshold",
+        "iou_threshold"
+    ]
+
+    if(db_report.get_task().data.original_chunk_type == DataChoice.AUDIO):
+        filtered_parameters = {
+            key: serialized_data["parameters"][key]
+            for key in quality_parameters_for_audio
+            if key in serialized_data["parameters"]
+        }
+        serialized_data["parameters"] = filtered_parameters
+    else:
+        for frame_result in serialized_data["frame_results"].values(): #not useful for audio reports
+            for conflict in frame_result["conflicts"]:
+                for ann_id in conflict["annotation_ids"]:
+                    ann_id["url"] = (
+                        f"{host}tasks/{task_id}/jobs/{ann_id['job_id']}"
+                        f"?frame={conflict['frame_id']}"
+                        f"&type={ann_id['type']}"
+                        f"&serverID={ann_id['obj_id']}"
+                    )
 
     # Add the percent representation for better human readability
     serialized_data["comparison_summary"]["frame_share_percent"] = (

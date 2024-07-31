@@ -1137,6 +1137,7 @@ class TaskReadSerializer(serializers.ModelSerializer):
     jobs = JobsSummarySerializer(url_filter_key='task_id', source='segment_set')
     labels = LabelsSummarySerializer(source='*')
     segment_duration = serializers.IntegerField(allow_null=True)
+    extra_params = serializers.BooleanField(required=False, allow_null=True)
 
     class Meta:
         model = models.Task
@@ -1144,7 +1145,7 @@ class TaskReadSerializer(serializers.ModelSerializer):
             'bug_tracker', 'created_date', 'updated_date', 'overlap', 'segment_size',
             'status', 'data_chunk_size', 'data_compressed_chunk_type', 'guide_id',
             'data_original_chunk_type', 'size', 'image_quality', 'data', 'dimension',
-            'subset', 'organization', 'target_storage', 'source_storage', 'jobs', 'labels','segment_duration',
+            'subset', 'organization', 'target_storage', 'source_storage', 'jobs', 'labels', 'segment_duration', 'extra_params',
         )
         read_only_fields = fields
         extra_kwargs = {
@@ -1161,12 +1162,13 @@ class TaskWriteSerializer(WriteOnceMixin, serializers.ModelSerializer):
     target_storage = StorageSerializer(required=False, allow_null=True)
     source_storage = StorageSerializer(required=False, allow_null=True)
     segment_duration = serializers.IntegerField(required=False, allow_null=True)
+    extra_params = serializers.BooleanField(required=False, allow_null=True)
 
     class Meta:
         model = models.Task
         fields = ('url', 'id', 'name', 'project_id', 'owner_id', 'assignee_id',
             'bug_tracker', 'overlap', 'segment_size', 'labels', 'subset',
-            'target_storage', 'source_storage', 'segment_duration',
+            'target_storage', 'source_storage', 'segment_duration', 'extra_params'
         )
         write_once_fields = ('overlap', 'segment_size')
 
