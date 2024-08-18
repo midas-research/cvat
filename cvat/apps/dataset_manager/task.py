@@ -1182,6 +1182,9 @@ def export_audino_job(job_id, dst_file, format_name, server_url=None, save_image
 
         df = pd.DataFrame(final_data)
 
+        # sorting by start column in ascending order
+        df = df.sort_values(by='start')
+
         # Saving the metadata file
         meta_data_file_path = os.path.join(temp_dir_base, str(job_id) + ".tsv")
         df.to_csv(meta_data_file_path, sep='\t', index=False)
@@ -1225,6 +1228,10 @@ def export_audino_task(task_id, dst_file, format_name, server_url=None, save_ima
         final_annotation_chunk_paths_flatten = [item for sublist in final_annotation_chunk_paths for item in sublist]
 
         df = pd.DataFrame(final_task_data_flatten)
+
+        # sorting by start column in pandas dataframe
+        df = df.sort_values(by='start')
+
         df.to_csv(meta_data_file_path, sep='\t', index=False)
 
         create_annotation_clips_zip(final_annotation_chunk_paths_flatten, meta_data_file_path, temp_dir_base, dst_file)
