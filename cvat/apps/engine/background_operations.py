@@ -195,7 +195,7 @@ class DatasetExportManager(_ResourceExportManager):
             location_config=location_config,
         )
         self.EXPORT_FOR = ""
-        AUDIO_FORMATS = ["Common Voice", "Librispeech", "VoxPopuli", "Ted-Lium"]
+        AUDIO_FORMATS = ["Common Voice", "Librispeech", "VoxPopuli", "Ted-Lium", "VoxCeleb", "VCTK_Corpus", "LibriVox"]
         if format_name in AUDIO_FORMATS:
             self.EXPORT_FOR = "audio"
 
