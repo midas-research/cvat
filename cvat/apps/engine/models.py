@@ -436,7 +436,6 @@ class Task(TimestampedModel):
         blank=True, on_delete=models.SET_NULL, related_name='+')
     audio_total_duration = models.PositiveIntegerField(null=True, default=None)
     segment_duration = models.PositiveIntegerField(null=True, default=None)
-    extra_params = models.BooleanField(null=True, default=False)
 
     # Extend default permission model
     class Meta:
@@ -1194,3 +1193,13 @@ class Asset(models.Model):
 
     def get_asset_dir(self):
         return os.path.join(settings.ASSETS_ROOT, str(self.uuid))
+
+class TaskFlags(models.Model):
+    task = models.OneToOneField(Task, on_delete=models.CASCADE, related_name='flags')
+    is_librivox = models.BooleanField(default=False)
+    is_vctx = models.BooleanField(default=False)
+    is_voxceleb = models.BooleanField(default=False)
+    is_librispeech = models.BooleanField(default=False)
+    is_voxpopuli = models.BooleanField(default=False)
+    is_tedlium = models.BooleanField(default=False)
+    is_commonvoice = models.BooleanField(default=False)

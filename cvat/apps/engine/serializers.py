@@ -584,6 +584,14 @@ class StorageSerializer(serializers.ModelSerializer):
         model = models.Storage
         fields = ('id', 'location', 'cloud_storage_id')
 
+class TaskFlagsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.TaskFlags
+        fields = (
+            'is_librivox', 'is_vctx', 'is_voxceleb', 'is_librispeech',
+            'is_voxpopuli', 'is_tedlium', 'is_commonvoice'
+        )
+
 class JobReadSerializer(serializers.ModelSerializer):
     task_id = serializers.ReadOnlyField(source="segment.task.id")
     project_id = serializers.ReadOnlyField(source="get_project_id", allow_null=True)
@@ -603,6 +611,7 @@ class JobReadSerializer(serializers.ModelSerializer):
     issues = IssuesSummarySerializer(source='*')
     target_storage = StorageSerializer(required=False, allow_null=True)
     source_storage = StorageSerializer(required=False, allow_null=True)
+    task_flags = TaskFlagsSerializer(source="segment.task.flags", read_only=True)
 
     class Meta:
         model = models.Job
@@ -611,7 +620,7 @@ class JobReadSerializer(serializers.ModelSerializer):
             'start_frame', 'stop_frame', 'data_chunk_size', 'data_compressed_chunk_type',
             'created_date', 'updated_date', 'issues', 'labels', 'type', 'organization',
             'target_storage', 'source_storage', 'ai_audio_annotation_status',
-            'ai_audio_annotation_task_id', 'ai_audio_annotation_error_msg')
+            'ai_audio_annotation_task_id', 'ai_audio_annotation_error_msg', 'task_flags')
         read_only_fields = fields
 
     def to_representation(self, instance):
@@ -1137,7 +1146,7 @@ class TaskReadSerializer(serializers.ModelSerializer):
     jobs = JobsSummarySerializer(url_filter_key='task_id', source='segment_set')
     labels = LabelsSummarySerializer(source='*')
     segment_duration = serializers.IntegerField(allow_null=True)
-    extra_params = serializers.BooleanField(required=False, allow_null=True)
+    flags = TaskFlagsSerializer(read_only=True)
 
     class Meta:
         model = models.Task
@@ -1145,7 +1154,8 @@ class TaskReadSerializer(serializers.ModelSerializer):
             'bug_tracker', 'created_date', 'updated_date', 'overlap', 'segment_size',
             'status', 'data_chunk_size', 'data_compressed_chunk_type', 'guide_id',
             'data_original_chunk_type', 'size', 'image_quality', 'data', 'dimension',
-            'subset', 'organization', 'target_storage', 'source_storage', 'jobs', 'labels', 'segment_duration', 'extra_params',
+            'subset', 'organization', 'target_storage', 'source_storage', 'jobs', 'labels',
+            'segment_duration', 'flags',
         )
         read_only_fields = fields
         extra_kwargs = {
@@ -1162,13 +1172,13 @@ class TaskWriteSerializer(WriteOnceMixin, serializers.ModelSerializer):
     target_storage = StorageSerializer(required=False, allow_null=True)
     source_storage = StorageSerializer(required=False, allow_null=True)
     segment_duration = serializers.IntegerField(required=False, allow_null=True)
-    extra_params = serializers.BooleanField(required=False, allow_null=True)
+    flags = TaskFlagsSerializer(required=False)
 
     class Meta:
         model = models.Task
         fields = ('url', 'id', 'name', 'project_id', 'owner_id', 'assignee_id',
             'bug_tracker', 'overlap', 'segment_size', 'labels', 'subset',
-            'target_storage', 'source_storage', 'segment_duration', 'extra_params'
+            'target_storage', 'source_storage', 'segment_duration', 'flags'
         )
         write_once_fields = ('overlap', 'segment_size')
 
@@ -1179,6 +1189,8 @@ class TaskWriteSerializer(WriteOnceMixin, serializers.ModelSerializer):
     # pylint: disable=no-self-use
     @transaction.atomic
     def create(self, validated_data):
+        flags_data = validated_data.pop('flags', {})
+
         project_id = validated_data.get("project_id")
         if not (validated_data.get("label_set") or project_id):
             raise serializers.ValidationError('Label set or project_id must be present')
@@ -1206,6 +1218,8 @@ class TaskWriteSerializer(WriteOnceMixin, serializers.ModelSerializer):
         db_task = models.Task.objects.create(
             **storages,
             **validated_data)
+
+        models.TaskFlags.objects.create(task=db_task, **flags_data)
 
         task_path = db_task.get_dirname()
         if os.path.isdir(task_path):
@@ -1284,6 +1298,11 @@ class TaskWriteSerializer(WriteOnceMixin, serializers.ModelSerializer):
                 instance.label_set.all().delete()
 
             instance.project = project
+
+        flags_data = validated_data.pop('flags', {})
+        for key, value in flags_data.items():
+            setattr(instance.flags, key, value)
+        instance.flags.save()
 
         # update source and target storages
         _update_related_storages(instance, validated_data)
