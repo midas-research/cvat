@@ -1196,6 +1196,7 @@ def convert_annotation_data_format(data, format_name):
             formatted_data.append(formatted_entry)
         return formatted_data
     elif format_name == "LibriVox":
+        language_id_mapping = {"en": 0}
         formatted_data = []
         for entry in data:
             formatted_entry = {
