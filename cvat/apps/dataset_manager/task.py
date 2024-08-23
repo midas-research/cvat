@@ -1155,6 +1155,69 @@ def convert_annotation_data_format(data, format_name):
                 formatted_entry[key] = entry[key]
             formatted_data.append(formatted_entry)
         return formatted_data
+    elif format_name == "VoxCeleb":
+        formatted_data = []
+        for entry in data:
+            formatted_entry = {
+                "file": entry["path"],
+                "text": entry["sentence"],
+                "gender": entry["gender"],
+                "nationality" : "",
+                "age": entry["age"],
+                "id": str(uuid.uuid4()),
+                "speaker_id": "",
+                "label": entry["label"],
+                "start": entry["start"],
+                "end": entry["end"]
+            }
+            attribute_keys = [key for key in entry.keys() if key.startswith("attribute_")]
+            for key in attribute_keys:
+                formatted_entry[key] = entry[key]
+            formatted_data.append(formatted_entry)
+        return formatted_data
+    elif format_name == "VCTK_Corpus":
+        formatted_data = []
+        for entry in data:
+            formatted_entry = {
+                "file": entry["path"],
+                "text": entry["sentence"],
+                "gender": entry["gender"],
+                "accent": entry["accents"],
+                "age": entry["age"],
+                "id": str(uuid.uuid4()),
+                "speaker_id": "",
+                "label": entry["label"],
+                "start": entry["start"],
+                "end": entry["end"]
+            }
+            attribute_keys = [key for key in entry.keys() if key.startswith("attribute_")]
+            for key in attribute_keys:
+                formatted_entry[key] = entry[key]
+            formatted_data.append(formatted_entry)
+        return formatted_data
+    elif format_name == "LibriVox":
+        formatted_data = []
+        for entry in data:
+            formatted_entry = {
+                "file": entry["path"],
+                "text": entry["sentence"],
+                "gender": entry["gender"],
+                "language": language_id_mapping.get(entry["locale"], None),
+                "duration": str(abs(float(entry["end"]) - float(entry["start"]))),
+                "accent": entry["accents"],
+                "age": entry["age"],
+                "id": str(uuid.uuid4()),
+                "speaker_id": "",
+                "label": entry["label"],
+                "start": entry["start"],
+                "end": entry["end"]
+            }
+            attribute_keys = [key for key in entry.keys() if key.startswith("attribute_")]
+            for key in attribute_keys:
+                formatted_entry[key] = entry[key]
+            formatted_data.append(formatted_entry)
+        return formatted_data
+
     return data
 
 def export_audino_job(job_id, dst_file, format_name, server_url=None, save_images=False):
