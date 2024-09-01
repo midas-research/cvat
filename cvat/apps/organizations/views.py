@@ -272,6 +272,25 @@ class InvitationViewSet(viewsets.GenericViewSet,
             invitation.accept()
             response_serializer = AcceptInvitationReadSerializer(data={'organization_slug': invitation.membership.organization.slug})
             response_serializer.is_valid(raise_exception=True)
+            
+            ## Send Notification
+            from rest_framework.test import APIRequestFactory
+            from ..Notifications.views import NotificationsViewSet
+            
+            request_data = {
+                "org": invitation.membership.organization.id,
+                "title": "New member Joined",
+                "message": "This is a test notification message.",
+                "notification_type": "info",
+                "extra_data": {}
+            }
+            factory = APIRequestFactory()
+            req = factory.post('/api/notifications', request_data, format='json')
+            notifications_view = NotificationsViewSet.as_view({
+                'post' : 'SendNotification'
+            })
+            response = notifications_view(req)
+            
             return Response(status=status.HTTP_200_OK, data=response_serializer.data)
         except Invitation.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND, data="This invitation does not exist. Please contact organization owner.")

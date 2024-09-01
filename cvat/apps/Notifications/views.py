@@ -110,12 +110,14 @@ class NotificationsViewSet(viewsets.ViewSet):
 
     def SendOrganizationNotifications(self, req):
         try:
-            organization = Organization.objects.get(id=req["org"]) # check for organization
-            users = organization.user_set.all()
+            organization = Organization.objects.get(id=req["org"])
+            members = organization.members.filter(is_active=True)
             errors = []
 
-            for user in users:
+            for member in members:
+                user = member.user
                 response = self.SendUserNotifications(user.id, req)
+                
                 if not response.data.get("success"):
                     errors.append(f"Error occurred while sending notification to user ({user.username}). Error: {response.data.get('error')}")
 

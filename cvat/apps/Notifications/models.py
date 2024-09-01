@@ -1,6 +1,7 @@
 from django.db.models import *
 
 from django.contrib.auth.models import User
+from ..organizations.models import *
 # Create your models here.
 
 class Notifications(Model):
