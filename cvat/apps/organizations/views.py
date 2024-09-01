@@ -275,7 +275,7 @@ class InvitationViewSet(viewsets.GenericViewSet,
             
             ## Send Notification
             from rest_framework.test import APIRequestFactory
-            from ..Notifications.views import NotificationsViewSet
+            from ..notifications.views import NotificationsViewSet
             
             request_data = {
                 "org": invitation.membership.organization.id,

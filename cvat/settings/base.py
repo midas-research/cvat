@@ -38,8 +38,8 @@ from django.core.exceptions import ImproperlyConfigured
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = str(Path(__file__).parents[2])
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
-INTERNAL_IPS = ['127.0.0.1']
+ALLOWED_HOSTS = ["*"]
+INTERNAL_IPS = ['127.0.0.1',]
 
 def generate_secret_key():
     """
@@ -117,7 +117,7 @@ INSTALLED_APPS = [
     'cvat.apps.events',
     'cvat.apps.quality_control',
     'cvat.apps.analytics_report',
-    'cvat.apps.Notifications'
+    'cvat.apps.notifications',
 ]
 
 SITE_ID = 1

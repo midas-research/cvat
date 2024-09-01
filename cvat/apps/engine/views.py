@@ -2157,7 +2157,7 @@ class AIAudioAnnotationViewSet(viewsets.ModelViewSet):
     def send_annotation_email(self, request, template_name, err=None):
         ## Send Notifications
         from rest_framework.test import APIRequestFactory
-        from ..Notifications.views import NotificationsViewSet
+        from ..notifications.views import NotificationsViewSet
         job_id = request.data.get('jobId')
         request_data = {
             "user": self.request.user.id,
