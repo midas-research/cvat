@@ -7,8 +7,6 @@ class Notifications(Model):
     title = CharField(max_length=255)
     message = TextField()
     extra_data = JSONField(blank=True, null=True)
-    files = FileField(upload_to='notifications/files/', blank=True, null=True)
-    url = URLField(blank=True, null=True)
     created_at = DateTimeField(auto_now_add=True)
     is_read = BooleanField(default=False)
     read_at = DateTimeField(blank=True, null=True)

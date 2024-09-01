@@ -55,9 +55,7 @@ class NotificationsViewSet(viewsets.ViewSet):
                 title = req.get('title'),
                 message = req.get('message'),
                 notification_type = req.get('notification_type'),
-                url = req.get('url', ''),
                 extra_data = req.get('extra_data', {}),
-                files = req.get('files', None),
             )
             notification.recipient.add(user)
             notification.save()
