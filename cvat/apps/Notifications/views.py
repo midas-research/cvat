@@ -13,6 +13,21 @@ from .models import *
 class NotificationsViewSet(viewsets.ViewSet):
     isAuthorized = True
 
+
+    # Usage
+    # from rest_framework.test import APIRequestFactory
+    
+    # request_data = {
+    #     "user": 1,
+    #     "title": "Test Notification",
+    #     "message": "This is a test notification message.",
+    #     "notification_type": "info",
+    #     "extra_data": {"key": "value"}
+    # }
+    # factory = APIRequestFactory()
+    # req = factory.post('/api/notifications', request_data, format='json')
+    # notifications_view = NotificationsViewSet.as_view({'post': 'SendNotification'})
+    # response = notifications_view(req)
     def SendNotification(self, request):
         try:
             req = request.data

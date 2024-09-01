@@ -53,4 +53,4 @@ if apps.is_installed('cvat.apps.analytics_report'):
     urlpatterns.append(path('api/', include('cvat.apps.analytics_report.urls')))
 
 if apps.is_installed('cvat.apps.Notifications'):
-    urlpatterns.append(path('', include('cvat.apps.Notifications.urls')))
+    urlpatterns.append(path('api/', include('cvat.apps.Notifications.urls')))
