@@ -11,6 +11,7 @@ from rest_framework import mixins, viewsets, status
 from rest_framework.permissions import SAFE_METHODS
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.filters import SearchFilter
 
 from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
 
@@ -22,11 +23,8 @@ from cvat.apps.engine.mixins import PartialUpdateModelMixin
 
 from .models import Invitation, Membership, Organization
 
-from .serializers import (
-    InvitationReadSerializer, InvitationWriteSerializer,
-    MembershipReadSerializer, MembershipWriteSerializer,
-    OrganizationReadSerializer, OrganizationWriteSerializer,
-    AcceptInvitationReadSerializer)
+import traceback
+from .serializers import *
 
 @extend_schema(tags=['organizations'])
 @extend_schema_view(
@@ -272,11 +270,11 @@ class InvitationViewSet(viewsets.GenericViewSet,
             invitation.accept()
             response_serializer = AcceptInvitationReadSerializer(data={'organization_slug': invitation.membership.organization.slug})
             response_serializer.is_valid(raise_exception=True)
-            
+
             ## Send Notification
             from rest_framework.test import APIRequestFactory
             from ..notifications.views import NotificationsViewSet
-            
+
             request_data = {
                 "org": invitation.membership.organization.id,
                 "title": "New member Joined",
@@ -290,7 +288,7 @@ class InvitationViewSet(viewsets.GenericViewSet,
                 'post' : 'SendNotification'
             })
             response = notifications_view(req)
-            
+
             return Response(status=status.HTTP_200_OK, data=response_serializer.data)
         except Invitation.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND, data="This invitation does not exist. Please contact organization owner.")
@@ -317,3 +315,281 @@ class InvitationViewSet(viewsets.GenericViewSet,
             return Response(status=status.HTTP_204_NO_CONTENT)
         except Invitation.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND, data="This invitation does not exist.")
+
+
+
+
+## Notification View Set
+from .models import *
+
+@extend_schema(tags=['notifications'])
+class NotificationsViewSet(viewsets.GenericViewSet,
+                   mixins.RetrieveModelMixin,
+                   mixins.ListModelMixin,
+                   mixins.CreateModelMixin,
+                   mixins.DestroyModelMixin,
+                   PartialUpdateModelMixin,
+    ):
+    isAuthorized = True
+    queryset = Notifications.objects.all()
+    serializer_class = NotificationSerializer
+    filter_backends = [SearchFilter]
+    search_fields = ['title', 'message']
+
+
+
+    def AddNotification(self, req):
+        try:
+            notification = Notifications.objects.create(
+                title = req.get('title'),
+                message = req.get('message'),
+                notification_type = req.get('notification_type'),
+                extra_data = req.get('extra_data', {}),
+            )
+            notification.save()
+
+            return Response(
+                {
+                    "success" : True,
+                    "message" : "Notification saved successfully.",
+                    "data" : {
+                        "notification" : notification
+                    },
+                    "error" : None
+                }
+            )
+        except Exception as e:
+            error = traceback.format_exc()
+
+            return Response(
+                {
+                    "success" : False,
+                    "message" : "An error occurred while saving notification.",
+                    "data" : {},
+                    "error" : error
+                },
+                status = status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'])
+    def SendNotification(self, request):
+        try:
+            req = request.data
+
+            if "user" in req or "org" in req:
+                response = self.AddNotification(req)
+                print(response)
+
+                if not response.data.get("success"):
+                    return response
+
+                notification = response.data.get("data")["notification"]
+
+                if "user" in req:
+                    user = req["user"]
+                    response = self.SendUserNotifications(notification, user, req)
+                elif "org" in req:
+                    response = self.SendOrganizationNotifications(notification, req)
+            else:
+                return Response(
+                    {
+                        "success" : False,
+                        "message" : "Invalid request data. 'user' or 'org' key is required.",
+                        "data" : {},
+                        "error" : None
+                    },
+                    status = status.HTTP_400_BAD_REQUEST
+                )
+
+            # if response["success"] == False:
+            #     self.try_delete_notification(notification)
+
+            return response
+        except Exception as e:
+            error = traceback.format_exc()
+
+            return Response(
+                {
+                    "success" : False,
+                    "message" : "An error occurred while sending notification.",
+                    "data" : {},
+                    "error" : error
+                },
+                status = status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+    def SendUserNotifications(self, notification, usr, req):
+        try:
+            user = User.objects.get(id=usr)
+            notification.recipient.add(user)
+
+            return Response(
+                {
+                    "success" : True,
+                    "message" : "Notification sent successfully.",
+                    "data" : {},
+                    "error" : None
+                },
+                status = status.HTTP_201_CREATED
+            )
+        except User.DoesNotExist:
+            return Response(
+                {
+                    "success" : False,
+                    "message" : f"User with id {usr} does not exist.",
+                    "data" : {},
+                    "error" : None
+                },
+                status = status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            error = traceback.format_exc()
+
+            return Response(
+                {
+                    "success" : False,
+                    "message" : "An error occurred while sending user notification.",
+                    "data" : {},
+                    "error" : error
+                },
+                status = status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+    def SendOrganizationNotifications(self, notification, req):
+        try:
+            organization = Organization.objects.get(id=req["org"])
+            members = organization.members.filter(is_active=True)
+            errors = []
+
+            for member in members:
+                user = member.user
+                response = self.SendUserNotifications(notification, user.id, req)
+
+                if not response.data.get("success"):
+                    errors.append(f"Error occurred while sending notification to user ({user.username}). Error: {response.data.get('error')}")
+
+            if not errors:
+                return Response(
+                    {
+                        "success" : True,
+                        "message" : "Notifications sent successfully.",
+                        "data" : {},
+                        "error" : None
+                    },
+                    status = status.HTTP_200_OK
+                )
+            else:
+                return Response(
+                    {
+                        "success" : False,
+                        "message" : "Unable to send notifications to one or more users.",
+                        "data" : {},
+                        "error" : errors
+                    },
+                    status = status.HTTP_504_GATEWAY_TIMEOUT
+                )
+        except Organization.DoesNotExist:
+            return Response(
+                {
+                    "success" : False,
+                    "message" : f"Organization with id {req['org']} does not exist.",
+                    "data" : {},
+                    "error" : None
+                },
+                status = status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            error = traceback.format_exc()
+
+            return Response(
+                {
+                    "success" : False,
+                    "message" : "An error occurred while sending organization notifications.",
+                    "data" : {},
+                    "error" : error
+                },
+                status = status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'])
+    def FetchUserNotifications(self, request):
+        try:
+            user = request.user
+            notifications = Notifications.objects.filter(recipient=User.objects.get(id=user.id))
+            data = []
+
+            for notification in notifications:
+                noti = {
+                    "title" : notification.title,
+                    "message" : notification.message,
+                    "created_at" : notification.created_at,
+                    "is_read" : notification.is_read,
+                    "notification_type" : notification.notification_type
+                }
+                data.append(noti)
+
+            return Response(
+                {
+                    "success" : True,
+                    "message" : "User notifications fetched successfully.",
+                    "data" : {
+                        "notifications" : data
+                    },
+                    "error" : None
+                },
+                status = status.HTTP_200_OK
+            )
+        except Exception as e:
+            error = traceback.format_exc()
+
+            return Response(
+                {
+                    "success" : False,
+                    "message" : "An error occurred while fetching notifications.",
+                    "data" : {},
+                    "error" : error
+                },
+                status = status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'])
+    def MarkNotificationAsViewed(self, request):
+        try:
+            notification_id = request.data.get('notification_id')
+            notification = Notifications.objects.get(id=notification_id, recipient=request.user)
+            notification.is_read = True
+            notification.read_at = timezone.now()
+            notification.save()
+
+            return Response(
+                {
+                    "success" : True,
+                    "message" : "Notification marked as viewed.",
+                    "data" : {},
+                    "error" : None
+                },
+                status = status.HTTP_200_OK
+            )
+        except Notifications.DoesNotExist:
+            return Response(
+                {
+                    "success" : False,
+                    "message" : f"Notification with id {notification_id} does not exist or does not belong to you.",
+                    "data" : {},
+                    "error" : None
+                },
+                status = status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            error = traceback.format_exc()
+            return Response(
+                {
+                    "success" : False,
+                    "message" : "An error occurred while marking notification as viewed.",
+                    "data" : {},
+                    "error" : error
+                },
+                status = status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

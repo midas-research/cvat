@@ -117,7 +117,7 @@ INSTALLED_APPS = [
     'cvat.apps.events',
     'cvat.apps.quality_control',
     'cvat.apps.analytics_report',
-    'cvat.apps.notifications',
+    # 'cvat.apps.notifications',
 ]
 
 SITE_ID = 1
@@ -657,7 +657,7 @@ ACCOUNT_LOGOUT_ON_PASSWORD_CHANGE = True
 
 ACCOUNT_ADAPTER = 'cvat.apps.iam.adapters.DefaultAccountAdapterEx'
 
-CVAT_HOST = os.getenv('CVAT_HOST', 'localhost')
+CVAT_HOST = os.getenv('CVAT_HOST', '192.168.0.181')
 CVAT_BASE_URL = os.getenv('CVAT_BASE_URL', f'http://{CVAT_HOST}:8080').rstrip('/')
 
 CLICKHOUSE = {

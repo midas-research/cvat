@@ -14,7 +14,7 @@ from django.db import transaction
 from rest_framework import serializers
 from cvat.apps.engine.serializers import BasicUserSerializer
 from cvat.apps.iam.utils import get_dummy_user
-from .models import Invitation, Membership, Organization
+from .models import *
 
 class OrganizationReadSerializer(serializers.ModelSerializer):
     owner = BasicUserSerializer(allow_null=True)
@@ -158,3 +158,9 @@ class MembershipWriteSerializer(serializers.ModelSerializer):
 
 class AcceptInvitationReadSerializer(serializers.Serializer):
     organization_slug = serializers.CharField()
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notifications
+        fields = ['id', 'title', 'message', 'created_at']
