@@ -9,34 +9,75 @@ import traceback
 from .models import *
 # Create your views here.
 
+## Usage
+# from rest_framework.test import APIRequestFactory
 
+# request_data = {
+#     "user": 1,
+#     "title": "Test Notification",
+#     "message": "This is a test notification message.",
+#     "notification_type": "info",
+#     "extra_data": {"key": "value"}
+# }
+# factory = APIRequestFactory()
+# req = factory.post('/api/notifications', request_data, format='json')
+# notifications_view = NotificationsViewSet.as_view({'post': 'SendNotification'})
+# response = notifications_view(req)
 class NotificationsViewSet(viewsets.ViewSet):
     isAuthorized = True
 
 
-    # Usage
-    # from rest_framework.test import APIRequestFactory
-    
-    # request_data = {
-    #     "user": 1,
-    #     "title": "Test Notification",
-    #     "message": "This is a test notification message.",
-    #     "notification_type": "info",
-    #     "extra_data": {"key": "value"}
-    # }
-    # factory = APIRequestFactory()
-    # req = factory.post('/api/notifications', request_data, format='json')
-    # notifications_view = NotificationsViewSet.as_view({'post': 'SendNotification'})
-    # response = notifications_view(req)
+    def AddNotification(self, req):
+        try:
+            notification = Notifications.objects.create(
+                title = req.get('title'),
+                message = req.get('message'),
+                notification_type = req.get('notification_type'),
+                extra_data = req.get('extra_data', {}),
+            )
+            notification.save()
+
+            return Response(
+                {
+                    "success" : True,
+                    "message" : "An error occurred while saving notification.",
+                    "data" : {
+                        "notification" : notification
+                    },
+                    "error" : error
+                }
+            )
+        except Exception as e:
+            error = traceback.format_exc()
+
+            return Response(
+                {
+                    "success" : False,
+                    "message" : "An error occurred while saving notification.",
+                    "data" : {},
+                    "error" : error
+                },
+                status = status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
     def SendNotification(self, request):
         try:
             req = request.data
 
-            if "user" in req:
-                user = req["user"]
-                response = self.SendUserNotifications(user, req)
-            elif "org" in req:
-                response = self.SendOrganizationNotifications(req)
+            if "user" in req or "org" in req:
+                response = self.AAddNotification(req)
+
+                if not response["success"]:
+                    return response
+
+                notification = response["data"]["notification"]
+
+                if "user" in req:
+                    user = req["user"]
+                    response = self.SendUserNotifications(notification, user, req)
+                elif "org" in req:
+                    response = self.SendOrganizationNotifications(notification, req)
             else:
                 return Response(
                     {
@@ -48,10 +89,13 @@ class NotificationsViewSet(viewsets.ViewSet):
                     status = status.HTTP_400_BAD_REQUEST
                 )
 
+            if response["success"] == False:
+                self.try_delete_notification(notification)
+
             return response
         except Exception as e:
             error = traceback.format_exc()
-            
+
             return Response(
                 {
                     "success" : False,
@@ -63,17 +107,10 @@ class NotificationsViewSet(viewsets.ViewSet):
             )
 
 
-    def SendUserNotifications(self, usr, req):
+    def SendUserNotifications(self, notification, usr, req):
         try:
             user = User.objects.get(id=usr)
-            notification = Notifications.objects.create(
-                title = req.get('title'),
-                message = req.get('message'),
-                notification_type = req.get('notification_type'),
-                extra_data = req.get('extra_data', {}),
-            )
             notification.recipient.add(user)
-            notification.save()
 
             return Response(
                 {
@@ -96,7 +133,7 @@ class NotificationsViewSet(viewsets.ViewSet):
             )
         except Exception as e:
             error = traceback.format_exc()
-            
+
             return Response(
                 {
                     "success" : False,
@@ -108,7 +145,7 @@ class NotificationsViewSet(viewsets.ViewSet):
             )
 
 
-    def SendOrganizationNotifications(self, req):
+    def SendOrganizationNotifications(self, notification, req):
         try:
             organization = Organization.objects.get(id=req["org"])
             members = organization.members.filter(is_active=True)
@@ -117,7 +154,7 @@ class NotificationsViewSet(viewsets.ViewSet):
             for member in members:
                 user = member.user
                 response = self.SendUserNotifications(user.id, req)
-                
+
                 if not response.data.get("success"):
                     errors.append(f"Error occurred while sending notification to user ({user.username}). Error: {response.data.get('error')}")
 
@@ -153,7 +190,7 @@ class NotificationsViewSet(viewsets.ViewSet):
             )
         except Exception as e:
             error = traceback.format_exc()
-            
+
             return Response(
                 {
                     "success" : False,
@@ -196,7 +233,7 @@ class NotificationsViewSet(viewsets.ViewSet):
             )
         except Exception as e:
             error = traceback.format_exc()
-            
+
             return Response(
                 {
                     "success" : False,
