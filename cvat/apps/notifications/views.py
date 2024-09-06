@@ -4,25 +4,13 @@ from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 
-import traceback
-
 from .models import *
+from .serializers import *
+
+import traceback
 # Create your views here.
 
 ## Usage
-# from rest_framework.test import APIRequestFactory
-
-# request_data = {
-#     "user": 1,
-#     "title": "Test Notification",
-#     "message": "This is a test notification message.",
-#     "notification_type": "info",
-#     "extra_data": {"key": "value"}
-# }
-# factory = APIRequestFactory()
-# req = factory.post('/api/notifications', request_data, format='json')
-# notifications_view = NotificationsViewSet.as_view({'post': 'SendNotification'})
-# response = notifications_view(req)
 class NotificationsViewSet(viewsets.ViewSet):
     isAuthorized = True
 
@@ -212,11 +200,9 @@ class NotificationsViewSet(viewsets.ViewSet):
                 noti = {
                     "title" : notification.title,
                     "message" : notification.message,
-                    "url" : notification.url,
                     "created_at" : notification.created_at,
                     "is_read" : notification.is_read,
-                    "notification_type" : notification.notification_type,
-                    "files" : notification.files.url if notification.files else None,
+                    "notification_type" : notification.notification_type
                 }
                 data.append(noti)
 
@@ -274,6 +260,7 @@ class NotificationsViewSet(viewsets.ViewSet):
             )
         except Exception as e:
             error = traceback.format_exc()
+
             return Response(
                 {
                     "success" : False,

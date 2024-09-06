@@ -158,9 +158,3 @@ class MembershipWriteSerializer(serializers.ModelSerializer):
 
 class AcceptInvitationReadSerializer(serializers.Serializer):
     organization_slug = serializers.CharField()
-
-
-class NotificationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Notifications
-        fields = ['id', 'title', 'message', 'created_at']

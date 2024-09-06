@@ -1,5 +1,3 @@
-# notifications/permissions.py
-
 from django.conf import settings
 from cvat.apps.iam.permissions import OpenPolicyAgentPermission, StrEnum
 
@@ -12,9 +10,11 @@ class NotificationPermission(OpenPolicyAgentPermission):
     @classmethod
     def create(cls, request, view, obj, iam_context):
         permissions = []
+
         for scope in cls.get_scopes(request, view, obj):
             perm = cls.create_base_perm(request, view, scope, iam_context, obj)
             permissions.append(perm)
+
         return permissions
 
     def __init__(self, **kwargs):
@@ -30,9 +30,8 @@ class NotificationPermission(OpenPolicyAgentPermission):
             return [Scopes.VIEW]
         elif view.action == 'MarkNotificationAsViewed':
             return [Scopes.MARK_AS_READ]
+
         return []
 
     def get_resource(self):
-        return {
-            'visibility': 'public' if settings.RESTRICTIONS.get('notifications_visibility', True) else 'private',
-        }
+        return None
