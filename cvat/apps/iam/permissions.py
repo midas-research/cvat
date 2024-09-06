@@ -150,7 +150,6 @@ class OpenPolicyAgentPermission(metaclass=ABCMeta):
         with make_requests_session() as session:
             response = session.post(self.url, json=self.payload)
             output = response.json()
-            print(f"\nOutput: {response}")
             output = output['result']
 
         allow = False

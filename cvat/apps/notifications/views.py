@@ -2,11 +2,13 @@ from django.shortcuts import render
 from django.utils import timezone
 
 from rest_framework import status, viewsets
+from rest_framework.request import Request
 from rest_framework.response import Response
 
 from .models import *
 from .serializers import *
 
+import json
 import traceback
 # Create your views here.
 
@@ -17,11 +19,11 @@ class NotificationsViewSet(viewsets.ViewSet):
 
     def AddNotification(self, req):
         try:
+            print("Saving Notifications")
             notification = Notifications.objects.create(
-                title = req.get('title'),
-                message = req.get('message'),
-                notification_type = req.get('notification_type'),
-                extra_data = req.get('extra_data', {}),
+                title = req['title'],
+                message = req['message'],
+                notification_type = req['notification_type']
             )
             notification.save()
 
@@ -32,7 +34,7 @@ class NotificationsViewSet(viewsets.ViewSet):
                     "data" : {
                         "notification" : notification
                     },
-                    "error" : error
+                    "error" : None
                 }
             )
         except Exception as e:
@@ -49,17 +51,19 @@ class NotificationsViewSet(viewsets.ViewSet):
             )
 
 
-    def SendNotification(self, request):
+    def SendNotification(self, request: Request):
         try:
-            req = request.data
+            print("Sending...")
+            body = request.body.decode('utf-8')
+            req = json.loads(body)
 
             if "user" in req or "org" in req:
-                response = self.AAddNotification(req)
+                response = self.AddNotification(req)
 
-                if not response["success"]:
+                if not response.data["success"]:
                     return response
 
-                notification = response["data"]["notification"]
+                notification = response.data["data"]["notification"]
 
                 if "user" in req:
                     user = req["user"]
@@ -77,12 +81,14 @@ class NotificationsViewSet(viewsets.ViewSet):
                     status = status.HTTP_400_BAD_REQUEST
                 )
 
-            if response["success"] == False:
-                self.try_delete_notification(notification)
+            if response.data["success"] == False:
+                pass
+                # self.try_delete_notification(notification)
 
             return response
         except Exception as e:
             error = traceback.format_exc()
+            print(error)
 
             return Response(
                 {
@@ -95,10 +101,11 @@ class NotificationsViewSet(viewsets.ViewSet):
             )
 
 
-    def SendUserNotifications(self, notification, usr, req):
+    def SendUserNotifications(self, notification, usr):
         try:
-            user = User.objects.get(id=usr)
+            user = User.objects.get(id = usr)
             notification.recipient.add(user)
+            notification.save()
 
             return Response(
                 {
@@ -141,7 +148,7 @@ class NotificationsViewSet(viewsets.ViewSet):
 
             for member in members:
                 user = member.user
-                response = self.SendUserNotifications(user.id, req)
+                response = self.SendUserNotifications(notification, user.id)
 
                 if not response.data.get("success"):
                     errors.append(f"Error occurred while sending notification to user ({user.username}). Error: {response.data.get('error')}")
@@ -178,6 +185,7 @@ class NotificationsViewSet(viewsets.ViewSet):
             )
         except Exception as e:
             error = traceback.format_exc()
+            print(error)
 
             return Response(
                 {
@@ -190,7 +198,7 @@ class NotificationsViewSet(viewsets.ViewSet):
             )
 
 
-    def FetchUserNotifications(self, request):
+    def FetchUserNotifications(self, request: Request):
         try:
             user = request.user
             notifications = Notifications.objects.filter(recipient=user)
@@ -231,40 +239,52 @@ class NotificationsViewSet(viewsets.ViewSet):
             )
 
 
-    def MarkNotificationAsViewed(self, request):
+    def MarkNotificationAsViewed(self, request: Request):
         try:
-            notification_id = request.data.get('notification_id')
-            notification = Notifications.objects.get(id=notification_id, recipient=request.user)
-            notification.is_read = True
-            notification.read_at = timezone.now()
-            notification.save()
+            notification_ids = request.data.get('notification_ids', [])
+
+            if not isinstance(notification_ids, list):
+                raise ValueError("Notification IDs should be provided as a list.")
+
+            notifications = Notifications.objects.filter(id__in=notification_ids, recipient=request.user)
+            updated_count = notifications.update(is_read=True, read_at=timezone.now())
+
+            if updated_count == 0:
+                return Response(
+                    {
+                        "success" : False,
+                        "message" : "No notifications found or none belong to you.",
+                        "data" : {},
+                        "error" : None
+                    },
+                    status=status.HTTP_404_NOT_FOUND
+                )
 
             return Response(
                 {
                     "success" : True,
-                    "message" : "Notification marked as viewed.",
+                    "message" : f"{updated_count} notifications marked as viewed.",
                     "data" : {},
                     "error" : None
                 },
-                status = status.HTTP_200_OK
+                status=status.HTTP_200_OK
             )
-        except Notifications.DoesNotExist:
+        except ValueError as ve:
             return Response(
                 {
                     "success" : False,
-                    "message" : f"Notification with id {notification_id} does not exist or does not belong to you.",
+                    "message" : str(ve),
                     "data" : {},
                     "error" : None
                 },
-                status = status.HTTP_404_NOT_FOUND
+                status=status.HTTP_400_BAD_REQUEST
             )
         except Exception as e:
             error = traceback.format_exc()
-
             return Response(
                 {
                     "success" : False,
-                    "message" : "An error occurred while marking notification as viewed.",
+                    "message" : "An error occurred while marking notifications as viewed.",
                     "data" : {},
                     "error" : error
                 },

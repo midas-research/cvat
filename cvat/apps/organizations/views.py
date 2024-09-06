@@ -237,6 +237,7 @@ class InvitationViewSet(viewsets.GenericViewSet,
     def create(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
         try:
             self.perform_create(serializer)
         except ImproperlyConfigured:
@@ -252,7 +253,27 @@ class InvitationViewSet(viewsets.GenericViewSet,
             request=self.request,
         )
 
+        ## Send Notification
+        print("Calling Notification API")
+        from rest_framework.test import APIRequestFactory
+        from ..notifications.views import NotificationsViewSet
+
+        factory = APIRequestFactory()
+        viewset = NotificationsViewSet()
+
+        request = factory.post('/notifications/', {
+            'org' : self.request.iam_context['organization'].id,
+            'title': 'Test Notification',
+            'message': 'This is a test message',
+            'notification_type': 'info',
+            'extra_data': {'key': 'value'}
+        }, format='json')
+
+        response = viewset.SendNotification(request)
+        print(response)
+
     def perform_update(self, serializer):
+
         if 'accepted' in self.request.query_params:
             serializer.instance.accept()
         else:
@@ -263,6 +284,7 @@ class InvitationViewSet(viewsets.GenericViewSet,
     def accept(self, request, pk):
         try:
             invitation = self.get_object() # force to call check_object_permissions
+
             if invitation.expired:
                 return Response(status=status.HTTP_400_BAD_REQUEST, data="Your invitation is expired. Please contact organization owner to renew it.")
             if invitation.membership.is_active:
@@ -270,24 +292,6 @@ class InvitationViewSet(viewsets.GenericViewSet,
             invitation.accept()
             response_serializer = AcceptInvitationReadSerializer(data={'organization_slug': invitation.membership.organization.slug})
             response_serializer.is_valid(raise_exception=True)
-
-            ## Send Notification
-            from rest_framework.test import APIRequestFactory
-            from ..notifications.views import NotificationsViewSet
-
-            factory = APIRequestFactory()
-            viewset = NotificationsViewSet()
-
-            request = factory.post('/notifications/', {
-                'org' : invitation.membership.organization.id,
-                'title': 'Test Notification',
-                'message': 'This is a test message',
-                'notification_type': 'info',
-                'extra_data': {'key': 'value'}
-            }, format='json')
-
-            response = viewset.SendNotification(request)
-
 
             return Response(status=status.HTTP_200_OK, data=response_serializer.data)
         except Invitation.DoesNotExist:
