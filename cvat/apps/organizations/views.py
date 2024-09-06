@@ -254,23 +254,60 @@ class InvitationViewSet(viewsets.GenericViewSet,
         )
 
         ## Send Notification
-        print("Calling Notification API")
-        from rest_framework.test import APIRequestFactory
         from ..notifications.views import NotificationsViewSet
+        from ..notifications.serializers import (SendNotificationSerializer, FetchUserNotificationsSerializer, MarkNotificationAsViewedSerializer)
 
-        factory = APIRequestFactory()
         viewset = NotificationsViewSet()
 
-        request = factory.post('/notifications/', {
-            'org' : self.request.iam_context['organization'].id,
+        # Test Sending Notification to Organization
+        send_notification_data = {
+            'org': self.request.iam_context['organization'].id,
             'title': 'Test Notification',
             'message': 'This is a test message',
             'notification_type': 'info',
-            'extra_data': {'key': 'value'}
-        }, format='json')
+        }
+        send_notification_serializer = SendNotificationSerializer(data=send_notification_data)
+        if send_notification_serializer.is_valid():
+            response = viewset.SendNotification(
+                request=type('Request', (object,), {'data': send_notification_serializer.validated_data})
+            )
 
-        response = viewset.SendNotification(request)
-        print(response)
+        # Test Sending Notification to User
+        send_notification_data_user = {
+            'user': self.request.user.id,
+            'title': 'Test Notification User only',
+            'message': 'This is a test message',
+            'notification_type': 'info',
+        }
+        send_notification_serializer_user = SendNotificationSerializer(data=send_notification_data_user)
+        if send_notification_serializer_user.is_valid():
+            response = viewset.SendNotification(
+                request=type('Request', (object,), {'data': send_notification_serializer_user.validated_data})
+            )
+
+        # Test Fetching Notifications
+        fetch_user_notifications_data = {
+            "user": self.request.user.id
+        }
+        fetch_user_notifications_serializer = FetchUserNotificationsSerializer(data=fetch_user_notifications_data)
+        if fetch_user_notifications_serializer.is_valid():
+            response = viewset.FetchUserNotifications(
+                request=type('Request', (object,), {'data': fetch_user_notifications_serializer.validated_data})
+            )
+            notifications = response.data["data"]["notifications"]
+            notification_ids = [notification["id"] for notification in notifications]
+
+            # Test Marking Notifications as Viewed
+            mark_notification_as_viewed_data = {
+                "user": self.request.user.id,
+                "notification_ids": notification_ids
+            }
+            mark_notification_as_viewed_serializer = MarkNotificationAsViewedSerializer(data=mark_notification_as_viewed_data)
+            if mark_notification_as_viewed_serializer.is_valid():
+                response = viewset.MarkNotificationAsViewed(
+                    request=type('Request', (object,), {'data': mark_notification_as_viewed_serializer.validated_data})
+                )
+
 
     def perform_update(self, serializer):
 

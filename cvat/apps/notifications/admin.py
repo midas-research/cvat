@@ -9,3 +9,10 @@ class NotificationsAdmin(admin.ModelAdmin):
 
 
 admin.site.register(Notifications, NotificationsAdmin)
+
+
+class NotificationStatusAdmin(admin.ModelAdmin):
+    model = NotificationStatus
+
+
+admin.site.register(NotificationStatus, NotificationStatusAdmin)

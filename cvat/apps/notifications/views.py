@@ -16,277 +16,272 @@ import traceback
 class NotificationsViewSet(viewsets.ViewSet):
     isAuthorized = True
 
-
-    def AddNotification(self, req):
-        try:
-            print("Saving Notifications")
-            notification = Notifications.objects.create(
-                title = req['title'],
-                message = req['message'],
-                notification_type = req['notification_type']
-            )
-            notification.save()
-
-            return Response(
-                {
-                    "success" : True,
-                    "message" : "An error occurred while saving notification.",
-                    "data" : {
-                        "notification" : notification
+    def AddNotification(self, data):
+        serializer = AddNotificationSerializer(data=data)
+        if serializer.is_valid():
+            try:
+                notification = Notifications.objects.create(
+                    title=serializer.validated_data['title'],
+                    message=serializer.validated_data['message'],
+                    notification_type=serializer.validated_data['notification_type']
+                )
+                return Response(
+                    {
+                        "success": True,
+                        "message": "Notification saved successfully.",
+                        "data": {
+                            "notification": UserNotificationDetailSerializer(notification).data
+                        },
+                        "error": None
+                    }
+                )
+            except Exception as e:
+                error = traceback.format_exc()
+                return Response(
+                    {
+                        "success": False,
+                        "message": "An error occurred while saving notification.",
+                        "data": {},
+                        "error": error
                     },
-                    "error" : None
-                }
-            )
-        except Exception as e:
-            error = traceback.format_exc()
-
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        else:
             return Response(
                 {
-                    "success" : False,
-                    "message" : "An error occurred while saving notification.",
-                    "data" : {},
-                    "error" : error
+                    "success": False,
+                    "message": "Invalid data.",
+                    "data": serializer.errors,
+                    "error": None
                 },
-                status = status.HTTP_500_INTERNAL_SERVER_ERROR
+                status=status.HTTP_400_BAD_REQUEST
             )
-
 
     def SendNotification(self, request: Request):
         try:
-            print("Sending...")
-            body = request.body.decode('utf-8')
-            req = json.loads(body)
-
-            if "user" in req or "org" in req:
-                response = self.AddNotification(req)
-
+            data = request.data  # Use request.data instead of json.loads(request.body)
+            serializer = SendNotificationSerializer(data=data)
+            if serializer.is_valid():
+                response = self.AddNotification(serializer.validated_data)
                 if not response.data["success"]:
                     return response
 
                 notification = response.data["data"]["notification"]
 
-                if "user" in req:
-                    user = req["user"]
-                    response = self.SendUserNotifications(notification, user, req)
-                elif "org" in req:
-                    response = self.SendOrganizationNotifications(notification, req)
+                if "user" in serializer.validated_data:
+                    user = serializer.validated_data["user"]
+                    response = self.SendUserNotifications(notification, user)
+                elif "org" in serializer.validated_data:
+                    response = self.SendOrganizationNotifications(notification, serializer.validated_data)
+
+                return response
             else:
                 return Response(
                     {
-                        "success" : False,
-                        "message" : "Invalid request data. 'user' or 'org' key is required.",
-                        "data" : {},
-                        "error" : None
+                        "success": False,
+                        "message": "Invalid request data.",
+                        "data": serializer.errors,
+                        "error": None
                     },
-                    status = status.HTTP_400_BAD_REQUEST
+                    status=status.HTTP_400_BAD_REQUEST
                 )
-
-            if response.data["success"] == False:
-                pass
-                # self.try_delete_notification(notification)
-
-            return response
         except Exception as e:
             error = traceback.format_exc()
-            print(error)
-
             return Response(
                 {
-                    "success" : False,
-                    "message" : "An error occurred while sending notification.",
-                    "data" : {},
-                    "error" : error
+                    "success": False,
+                    "message": "An error occurred while sending notification.",
+                    "data": {},
+                    "error": error
                 },
-                status = status.HTTP_500_INTERNAL_SERVER_ERROR
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
-    def SendUserNotifications(self, notification, usr):
+    def SendUserNotifications(self, notification, user_id):
         try:
-            user = User.objects.get(id = usr)
-            notification.recipient.add(user)
-            notification.save()
-
+            user = User.objects.get(id=user_id)
+            notification = Notifications.objects.get(id=notification.get("id"))
+            NotificationStatus.objects.get_or_create(
+                notification=notification,
+                user=user,
+                defaults={'is_read': False}
+            )
             return Response(
                 {
-                    "success" : True,
-                    "message" : "Notification sent successfully.",
-                    "data" : {},
-                    "error" : None
+                    "success": True,
+                    "message": "Notification sent successfully.",
+                    "data": {},
+                    "error": None
                 },
-                status = status.HTTP_201_CREATED
+                status=status.HTTP_201_CREATED
             )
         except User.DoesNotExist:
             return Response(
                 {
-                    "success" : False,
-                    "message" : f"User with id {usr} does not exist.",
-                    "data" : {},
-                    "error" : None
+                    "success": False,
+                    "message": f"User with id {user_id} does not exist.",
+                    "data": {},
+                    "error": None
                 },
-                status = status.HTTP_404_NOT_FOUND
+                status=status.HTTP_404_NOT_FOUND
             )
         except Exception as e:
             error = traceback.format_exc()
-
             return Response(
                 {
-                    "success" : False,
-                    "message" : "An error occurred while sending user notification.",
-                    "data" : {},
-                    "error" : error
+                    "success": False,
+                    "message": "An error occurred while sending user notification.",
+                    "data": {},
+                    "error": error
                 },
-                status = status.HTTP_500_INTERNAL_SERVER_ERROR
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
-    def SendOrganizationNotifications(self, notification, req):
+    def SendOrganizationNotifications(self, notification, data):
         try:
-            organization = Organization.objects.get(id=req["org"])
+            organization = Organization.objects.get(id=data["org"])
             members = organization.members.filter(is_active=True)
             errors = []
 
             for member in members:
                 user = member.user
                 response = self.SendUserNotifications(notification, user.id)
-
                 if not response.data.get("success"):
                     errors.append(f"Error occurred while sending notification to user ({user.username}). Error: {response.data.get('error')}")
 
             if not errors:
                 return Response(
                     {
-                        "success" : True,
-                        "message" : "Notifications sent successfully.",
-                        "data" : {},
-                        "error" : None
+                        "success": True,
+                        "message": "Notifications sent successfully.",
+                        "data": {},
+                        "error": None
                     },
-                    status = status.HTTP_200_OK
+                    status=status.HTTP_200_OK
                 )
             else:
                 return Response(
                     {
-                        "success" : False,
-                        "message" : "Unable to send notifications to one or more users.",
-                        "data" : {},
-                        "error" : errors
+                        "success": False,
+                        "message": "Unable to send notifications to one or more users.",
+                        "data": {},
+                        "error": errors
                     },
-                    status = status.HTTP_504_GATEWAY_TIMEOUT
+                    status=status.HTTP_504_GATEWAY_TIMEOUT
                 )
         except Organization.DoesNotExist:
             return Response(
                 {
-                    "success" : False,
-                    "message" : f"Organization with id {req['org']} does not exist.",
-                    "data" : {},
-                    "error" : None
+                    "success": False,
+                    "message": f"Organization with id {data['org']} does not exist.",
+                    "data": {},
+                    "error": None
                 },
-                status = status.HTTP_404_NOT_FOUND
+                status=status.HTTP_404_NOT_FOUND
             )
         except Exception as e:
             error = traceback.format_exc()
-            print(error)
-
             return Response(
                 {
-                    "success" : False,
-                    "message" : "An error occurred while sending organization notifications.",
-                    "data" : {},
-                    "error" : error
+                    "success": False,
+                    "message": "An error occurred while sending organization notifications.",
+                    "data": {},
+                    "error": error
                 },
-                status = status.HTTP_500_INTERNAL_SERVER_ERROR
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
 
     def FetchUserNotifications(self, request: Request):
         try:
-            user = request.user
-            notifications = Notifications.objects.filter(recipient=user)
-            data = []
+            data = request.data
+            serializer = FetchUserNotificationsSerializer(data=data)
+            if serializer.is_valid():
+                user_id = serializer.validated_data["user"]
+                notifications_status = NotificationStatus.objects.filter(user_id=user_id)
+                data = [UserNotificationDetailSerializer(noti_status.notification).data for noti_status in notifications_status]
 
-            for notification in notifications:
-                noti = {
-                    "title" : notification.title,
-                    "message" : notification.message,
-                    "created_at" : notification.created_at,
-                    "is_read" : notification.is_read,
-                    "notification_type" : notification.notification_type
-                }
-                data.append(noti)
-
-            return Response(
-                {
-                    "success" : True,
-                    "message" : "User notifications fetched successfully.",
-                    "data" : {
-                        "notifications" : data
+                return Response(
+                    {
+                        "success": True,
+                        "message": "User notifications fetched successfully.",
+                        "data": {
+                            "notifications": data
+                        },
+                        "error": None
                     },
-                    "error" : None
-                },
-                status = status.HTTP_200_OK
-            )
+                    status=status.HTTP_200_OK
+                )
+            else:
+                return Response(
+                    {
+                        "success": False,
+                        "message": "Invalid request data.",
+                        "data": serializer.errors,
+                        "error": None
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
         except Exception as e:
             error = traceback.format_exc()
-
             return Response(
                 {
-                    "success" : False,
-                    "message" : "An error occurred while fetching notifications.",
-                    "data" : {},
-                    "error" : error
+                    "success": False,
+                    "message": "An error occurred while fetching notifications.",
+                    "data": {},
+                    "error": error
                 },
-                status = status.HTTP_500_INTERNAL_SERVER_ERROR
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
 
     def MarkNotificationAsViewed(self, request: Request):
         try:
-            notification_ids = request.data.get('notification_ids', [])
+            data = request.data  # Use request.data instead of json.loads(request.body)
+            serializer = MarkNotificationAsViewedSerializer(data=data)
+            if serializer.is_valid():
+                user_id = serializer.validated_data["user"]
+                notification_ids = serializer.validated_data["notification_ids"]
 
-            if not isinstance(notification_ids, list):
-                raise ValueError("Notification IDs should be provided as a list.")
+                notifications_status = NotificationStatus.objects.filter(notification_id__in=notification_ids, user_id=user_id)
+                updated_count = notifications_status.update(is_read=True, read_at=timezone.now())
 
-            notifications = Notifications.objects.filter(id__in=notification_ids, recipient=request.user)
-            updated_count = notifications.update(is_read=True, read_at=timezone.now())
+                if updated_count == 0:
+                    return Response(
+                        {
+                            "success": False,
+                            "message": "No notifications found or none belong to you.",
+                            "data": {},
+                            "error": None
+                        },
+                        status=status.HTTP_404_NOT_FOUND
+                    )
 
-            if updated_count == 0:
                 return Response(
                     {
-                        "success" : False,
-                        "message" : "No notifications found or none belong to you.",
-                        "data" : {},
-                        "error" : None
+                        "success": True,
+                        "message": f"{updated_count} notifications marked as viewed.",
+                        "data": {},
+                        "error": None
                     },
-                    status=status.HTTP_404_NOT_FOUND
+                    status=status.HTTP_200_OK
                 )
-
-            return Response(
-                {
-                    "success" : True,
-                    "message" : f"{updated_count} notifications marked as viewed.",
-                    "data" : {},
-                    "error" : None
-                },
-                status=status.HTTP_200_OK
-            )
-        except ValueError as ve:
-            return Response(
-                {
-                    "success" : False,
-                    "message" : str(ve),
-                    "data" : {},
-                    "error" : None
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            else:
+                return Response(
+                    {
+                        "success": False,
+                        "message": "Invalid data.",
+                        "data": serializer.errors,
+                        "error": None
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
         except Exception as e:
             error = traceback.format_exc()
             return Response(
                 {
-                    "success" : False,
-                    "message" : "An error occurred while marking notifications as viewed.",
-                    "data" : {},
-                    "error" : error
+                    "success": False,
+                    "message": "An error occurred while marking notifications as viewed.",
+                    "data": {},
+                    "error": error
                 },
-                status = status.HTTP_500_INTERNAL_SERVER_ERROR
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
