@@ -1062,6 +1062,7 @@ def get_audio_job_export_data(job_id, dst_file, job, temp_dir_base, temp_dir):
 
     for i, annotation in enumerate(annotations):
         entry = {
+            "job_id": job_id,
             "path": os.path.basename(annotation_audio_chunk_file_paths[i]),
             "sentence": annotation.get("transcript", ""),
             "age": annotation.get("age", ""),
@@ -1100,6 +1101,7 @@ def convert_annotation_data_format(data, format_name):
         formatted_data = []
         for entry in data:
             formatted_entry = {
+                "job_id": entry["job_id"],
                 "chapter_id": "",
                 "file": entry["path"],
                 "id": str(uuid.uuid4()),
@@ -1119,6 +1121,7 @@ def convert_annotation_data_format(data, format_name):
         formatted_data = []
         for entry in data:
             formatted_entry = {
+                "job_id": entry["job_id"],
                 "audio_id": str(uuid.uuid4()),
                 "language": language_id_mapping.get(entry["locale"], None),
                 "audio_path": entry["path"],
@@ -1141,6 +1144,7 @@ def convert_annotation_data_format(data, format_name):
         formatted_data = []
         for entry in data:
             formatted_entry = {
+                "job_id": entry["job_id"],
                 "file": entry["path"],
                 "text": entry["sentence"],
                 "gender": entry["gender"],
@@ -1159,6 +1163,7 @@ def convert_annotation_data_format(data, format_name):
         formatted_data = []
         for entry in data:
             formatted_entry = {
+                "job_id": entry["job_id"],
                 "file": entry["path"],
                 "text": entry["sentence"],
                 "gender": entry["gender"],
@@ -1179,6 +1184,7 @@ def convert_annotation_data_format(data, format_name):
         formatted_data = []
         for entry in data:
             formatted_entry = {
+                "job_id": entry["job_id"],
                 "file": entry["path"],
                 "text": entry["sentence"],
                 "gender": entry["gender"],
@@ -1200,6 +1206,7 @@ def convert_annotation_data_format(data, format_name):
         formatted_data = []
         for entry in data:
             formatted_entry = {
+                "job_id": entry["job_id"],
                 "file": entry["path"],
                 "text": entry["sentence"],
                 "gender": entry["gender"],
