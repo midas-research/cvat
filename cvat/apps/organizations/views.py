@@ -24,7 +24,11 @@ from cvat.apps.engine.mixins import PartialUpdateModelMixin
 from .models import Invitation, Membership, Organization
 
 import traceback
-from .serializers import *
+from .serializers import (
+    InvitationReadSerializer, InvitationWriteSerializer,
+    MembershipReadSerializer, MembershipWriteSerializer,
+    OrganizationReadSerializer, OrganizationWriteSerializer,
+    AcceptInvitationReadSerializer)
 
 @extend_schema(tags=['organizations'])
 @extend_schema_view(

@@ -149,8 +149,7 @@ class OpenPolicyAgentPermission(metaclass=ABCMeta):
     def check_access(self) -> PermissionResult:
         with make_requests_session() as session:
             response = session.post(self.url, json=self.payload)
-            output = response.json()
-            output = output['result']
+            output = response.json()['result']
 
         allow = False
         reasons = []

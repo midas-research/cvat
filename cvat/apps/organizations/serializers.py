@@ -14,7 +14,7 @@ from django.db import transaction
 from rest_framework import serializers
 from cvat.apps.engine.serializers import BasicUserSerializer
 from cvat.apps.iam.utils import get_dummy_user
-from .models import *
+from .models import Invitation, Membership, Organization
 
 class OrganizationReadSerializer(serializers.ModelSerializer):
     owner = BasicUserSerializer(allow_null=True)
