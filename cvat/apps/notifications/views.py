@@ -1,18 +1,39 @@
 from django.shortcuts import render
 from django.utils import timezone
+from django.core.paginator import EmptyPage
 
 from rest_framework import status, viewsets
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.pagination import PageNumberPagination
 
 from .models import *
 from .serializers import *
 
 import json
 import traceback
-# Create your views here.
 
-## Usage
+
+## Pagination
+class CustomPagination(PageNumberPagination):
+    def paginate_queryset(self, queryset, request, view = None):
+        page_size = request.data.get('items_per_page', 10)
+        page_number = request.data.get('current_page', 1)
+        self.page_size = page_size
+        paginator = self.django_paginator_class(queryset, page_size)
+
+        try:
+            self.page = paginator.page(page_number)
+        except EmptyPage:
+            return None
+
+        if int(page_number) > paginator.num_pages:
+            return None
+
+        return list(self.page)
+
+
+## Notification
 class NotificationsViewSet(viewsets.ViewSet):
     isAuthorized = True
 
@@ -44,7 +65,7 @@ class NotificationsViewSet(viewsets.ViewSet):
                         "data": {},
                         "error": error
                     },
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    status = status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
         else:
             return Response(
@@ -54,7 +75,7 @@ class NotificationsViewSet(viewsets.ViewSet):
                     "data": serializer.errors,
                     "error": None
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status = status.HTTP_400_BAD_REQUEST
             )
 
     def SendNotification(self, request: Request):
@@ -83,7 +104,7 @@ class NotificationsViewSet(viewsets.ViewSet):
                         "data": serializer.errors,
                         "error": None
                     },
-                    status=status.HTTP_400_BAD_REQUEST
+                    status = status.HTTP_400_BAD_REQUEST
                 )
         except Exception as e:
             error = traceback.format_exc()
@@ -94,7 +115,7 @@ class NotificationsViewSet(viewsets.ViewSet):
                     "data": {},
                     "error": error
                 },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                status = status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     def SendUserNotifications(self, notification, user_id):
@@ -113,7 +134,7 @@ class NotificationsViewSet(viewsets.ViewSet):
                     "data": {},
                     "error": None
                 },
-                status=status.HTTP_201_CREATED
+                status = status.HTTP_201_CREATED
             )
         except User.DoesNotExist:
             return Response(
@@ -123,7 +144,7 @@ class NotificationsViewSet(viewsets.ViewSet):
                     "data": {},
                     "error": None
                 },
-                status=status.HTTP_404_NOT_FOUND
+                status = status.HTTP_404_NOT_FOUND
             )
         except Exception as e:
             error = traceback.format_exc()
@@ -134,7 +155,7 @@ class NotificationsViewSet(viewsets.ViewSet):
                     "data": {},
                     "error": error
                 },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                status = status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     def SendOrganizationNotifications(self, notification, data):
@@ -157,7 +178,7 @@ class NotificationsViewSet(viewsets.ViewSet):
                         "data": {},
                         "error": None
                     },
-                    status=status.HTTP_200_OK
+                    status = status.HTTP_200_OK
                 )
             else:
                 return Response(
@@ -167,7 +188,7 @@ class NotificationsViewSet(viewsets.ViewSet):
                         "data": {},
                         "error": errors
                     },
-                    status=status.HTTP_504_GATEWAY_TIMEOUT
+                    status = status.HTTP_504_GATEWAY_TIMEOUT
                 )
         except Organization.DoesNotExist:
             return Response(
@@ -177,7 +198,7 @@ class NotificationsViewSet(viewsets.ViewSet):
                     "data": {},
                     "error": None
                 },
-                status=status.HTTP_404_NOT_FOUND
+                status = status.HTTP_404_NOT_FOUND
             )
         except Exception as e:
             error = traceback.format_exc()
@@ -188,28 +209,48 @@ class NotificationsViewSet(viewsets.ViewSet):
                     "data": {},
                     "error": error
                 },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                status = status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
 
     def FetchUserNotifications(self, request: Request):
         try:
             data = request.data
-            serializer = FetchUserNotificationsSerializer(data=data)
+            serializer = FetchUserNotificationsSerializer(data = data)
+
             if serializer.is_valid():
                 user_id = serializer.validated_data["user"]
-                notifications_status = NotificationStatus.objects.filter(user_id=user_id)
-                data = [UserNotificationDetailSerializer(noti_status.notification).data for noti_status in notifications_status]
+                notifications_status = NotificationStatus.objects.filter(user_id=user_id).order_by('-notification__created_at')
+                unread_count = notifications_status.filter(is_read=False).count()
+
+                # Set up pagination
+                paginator = CustomPagination()
+                paginated_notifications = paginator.paginate_queryset(notifications_status, request)
+
+                if paginated_notifications is None:
+                    return Response(
+                        {
+                            "success": False,
+                            "message": "No notifications available on this page.",
+                            "data": None,
+                            "error": None
+                        },
+                        status = status.HTTP_400_BAD_REQUEST
+                    )
+
+                serialized_notifications = [UserNotificationDetailSerializer(noti_status.notification).data for noti_status in paginated_notifications]
 
                 return Response(
                     {
                         "success": True,
                         "message": "User notifications fetched successfully.",
                         "data": {
-                            "notifications": data
+                            "unread" : unread_count,
+                            "notifications": serialized_notifications
                         },
                         "error": None
                     },
-                    status=status.HTTP_200_OK
+                    status = status.HTTP_200_OK
                 )
             else:
                 return Response(
@@ -219,10 +260,11 @@ class NotificationsViewSet(viewsets.ViewSet):
                         "data": serializer.errors,
                         "error": None
                     },
-                    status=status.HTTP_400_BAD_REQUEST
+                    status = status.HTTP_400_BAD_REQUEST
                 )
         except Exception as e:
             error = traceback.format_exc()
+            print(error)
             return Response(
                 {
                     "success": False,
@@ -230,7 +272,7 @@ class NotificationsViewSet(viewsets.ViewSet):
                     "data": {},
                     "error": error
                 },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                status = status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     def MarkNotificationAsViewed(self, request: Request):
@@ -252,7 +294,7 @@ class NotificationsViewSet(viewsets.ViewSet):
                             "data": {},
                             "error": None
                         },
-                        status=status.HTTP_404_NOT_FOUND
+                        status = status.HTTP_404_NOT_FOUND
                     )
 
                 return Response(
@@ -262,7 +304,7 @@ class NotificationsViewSet(viewsets.ViewSet):
                         "data": {},
                         "error": None
                     },
-                    status=status.HTTP_200_OK
+                    status = status.HTTP_200_OK
                 )
             else:
                 return Response(
@@ -272,7 +314,7 @@ class NotificationsViewSet(viewsets.ViewSet):
                         "data": serializer.errors,
                         "error": None
                     },
-                    status=status.HTTP_400_BAD_REQUEST
+                    status = status.HTTP_400_BAD_REQUEST
                 )
         except Exception as e:
             error = traceback.format_exc()
@@ -283,5 +325,5 @@ class NotificationsViewSet(viewsets.ViewSet):
                     "data": {},
                     "error": error
                 },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                status = status.HTTP_500_INTERNAL_SERVER_ERROR
             )

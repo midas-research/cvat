@@ -25,7 +25,6 @@ from drf_spectacular.utils import extend_schema_field
 
 from cvat.apps.engine.utils import parse_specific_attributes
 from cvat.apps.events.utils import cache_deleted
-
 class SafeCharField(models.CharField):
     def get_prep_value(self, value):
         value = super().get_prep_value(value)

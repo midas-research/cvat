@@ -2155,24 +2155,6 @@ class AIAudioAnnotationViewSet(viewsets.ModelViewSet):
     filter_backends = []
 
     def send_annotation_email(self, request, template_name, err=None):
-        ## Send Notifications
-        from rest_framework.test import APIRequestFactory
-        from ..notifications.views import NotificationsViewSet
-        job_id = request.data.get('jobId')
-        request_data = {
-            "user": self.request.user.id,
-            "title": "AI Annotation Complete",
-            "message": "This is a test notification message.",
-            "notification_type": "info",
-            "extra_data": {}
-        }
-        factory = APIRequestFactory()
-        req = factory.post('/api/notifications', request_data, format='json')
-        notifications_view = NotificationsViewSet.as_view({
-            'post' : 'SendNotification'
-        })
-        response = notifications_view(req)
-        
         job_id = request.data.get('jobId')
         if settings.EMAIL_BACKEND is None:
             raise ImproperlyConfigured("Email backend is not configured")
@@ -2236,6 +2218,17 @@ class AIAudioAnnotationViewSet(viewsets.ModelViewSet):
             job.save()
 
             self.send_annotation_email(request, 'annotation')
+
+            ## Notification
+            from ..notifications.api import SendNotificationToSingleUser
+
+            notification_response = SendNotificationToSingleUser(
+                request.user.id,
+                f"#{job.id} - Annotaion Completed",
+                f"This annotation was completed at {datetime.now()}. \nStatus: {job.ai_audio_annotation_status}",
+                "info"
+            )
+
             return Response({'success': True, 'segments': saved_segments}, status=status.HTTP_201_CREATED)
 
         except Exception as e:

@@ -46,3 +46,5 @@ class MarkNotificationAsViewedSerializer(serializers.Serializer):
 
 class FetchUserNotificationsSerializer(serializers.Serializer):
     user = serializers.IntegerField()
+    current_page = serializers.IntegerField()
+    items_per_page = serializers.IntegerField()

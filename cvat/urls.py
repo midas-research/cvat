@@ -52,5 +52,5 @@ if apps.is_installed('health_check'):
 if apps.is_installed('cvat.apps.analytics_report'):
     urlpatterns.append(path('api/', include('cvat.apps.analytics_report.urls')))
 
-if apps.is_installed('cvat.apps.Notifications'):
-    urlpatterns.append(path('api/', include('cvat.apps.Notifications.urls')))
+if apps.is_installed('cvat.apps.notifications'):
+    urlpatterns.append(path('api/', include('cvat.apps.notifications.urls')))
