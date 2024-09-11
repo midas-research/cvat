@@ -11,7 +11,6 @@ from rest_framework import mixins, viewsets, status
 from rest_framework.permissions import SAFE_METHODS
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.filters import SearchFilter
 
 from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
 
@@ -23,7 +22,6 @@ from cvat.apps.engine.mixins import PartialUpdateModelMixin
 
 from .models import Invitation, Membership, Organization
 
-import traceback
 from .serializers import (
     InvitationReadSerializer, InvitationWriteSerializer,
     MembershipReadSerializer, MembershipWriteSerializer,
