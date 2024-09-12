@@ -39,7 +39,26 @@ def load_anno(file_object, annotations):
         label_name = record.get("label")
         label_id = label_data._get_label_id(label_name)
 
-        spec_id = label_data._get_attribute_id(label_id, record.get("attribute_1_name"))
+        attributes = []
+
+        for i in range(1, len(headers)):
+            attribute_name_key = f"attribute_{i}_name"
+            attribute_value_key = f"attribute_{i}_value"
+
+            if attribute_name_key in record and attribute_value_key in record:
+                attribute_name = record.get(attribute_name_key)
+                attribute_value = record.get(attribute_value_key)
+
+                if attribute_name and attribute_value:
+
+                    spec_id = label_data._get_attribute_id(label_id, attribute_name)
+
+                    attributes.append(
+                        {
+                            "spec_id": spec_id,
+                            "value": attribute_value,
+                        }
+                    )
 
         language_id_to_locale_mapping = {0: "en"}
         language_id = int(record.get("language", 0))
@@ -62,12 +81,7 @@ def load_anno(file_object, annotations):
                 "emotion": record.get("emotion", ""),
                 "rotation": 0.0,
                 "label_id": label_id,
-                "attributes": [
-                    {
-                        "spec_id": spec_id,
-                        "value": record.get("attribute_1_value", ""),
-                    }
-                ],
+                "attributes": attributes,
             }
         ]
 
