@@ -1117,7 +1117,7 @@ def convert_annotation_data_format(data, format_name):
             formatted_data.append(formatted_entry)
         return formatted_data
     elif format_name == "VoxPopuli":
-        language_id_mapping = {"en": 0}
+        language_id_mapping = {"en-US": 0,"es-ES":1,"fr-FR":2,"zh-CN":3,"hi-IN":4,"ar-EG":5,"pt-BR":6,"ja-JP":7,"de-DE":8,"ru-RU":9}
         formatted_data = []
         for entry in data:
             formatted_entry = {
@@ -1202,7 +1202,7 @@ def convert_annotation_data_format(data, format_name):
             formatted_data.append(formatted_entry)
         return formatted_data
     elif format_name == "LibriVox":
-        language_id_mapping = {"en": 0}
+        language_id_mapping = {"en-US": 0,"es-ES":1,"fr-FR":2,"zh-CN":3,"hi-IN":4,"ar-EG":5,"pt-BR":6,"ja-JP":7,"de-DE":8,"ru-RU":9}
         formatted_data = []
         for entry in data:
             formatted_entry = {
