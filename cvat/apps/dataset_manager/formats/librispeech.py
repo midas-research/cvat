@@ -60,10 +60,21 @@ def load_anno(file_object, annotations):
                         }
                     )
 
-        language_id_to_locale_mapping = {0: "en-US", 1: "es-ES", 2: "fr-FR", 3: "zh-CN", 4: "hi-IN", 5: "ar-EG", 6: "pt-BR", 7: "ja-JP", 8: "de-DE", 9: "ru-RU"}
+        language_id_to_locale_mapping = {
+            0: "en-US",
+            1: "es-ES",
+            2: "fr-FR",
+            3: "zh-CN",
+            4: "hi-IN",
+            5: "ar-EG",
+            6: "pt-BR",
+            7: "ja-JP",
+            8: "de-DE",
+            9: "ru-RU",
+        }
 
         # defaults to -1 if language field not in tsv, locale will be an empty string
-        language_id = int(record.get("language",-1))
+        language_id = int(record.get("language", -1))
 
         shapes_data = [
             {
