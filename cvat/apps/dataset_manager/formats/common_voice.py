@@ -230,7 +230,7 @@ def _import(src_file, temp_dir, instance_data, load_data_callback=None, **kwargs
             }
 
             _create_thread(
-                locked_instance, data, is_task_import=True, temp_dir=temp_dir
+                locked_instance, data
             )
 
 
