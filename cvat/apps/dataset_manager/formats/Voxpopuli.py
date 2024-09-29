@@ -248,9 +248,7 @@ def _import(src_file, temp_dir, instance_data, load_data_callback=None, **kwargs
                 "filename_pattern": None,
             }
 
-            _create_thread(
-                locked_instance, data
-            )
+            _create_thread(locked_instance, data)
 
             with open(tsv_file_path, "r", newline="", encoding="utf-8") as tsvfile:
                 reader = csv.DictReader(tsvfile, delimiter="\t")
