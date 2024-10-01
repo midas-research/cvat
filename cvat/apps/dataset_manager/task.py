@@ -1136,7 +1136,6 @@ def convert_annotation_data_format(data, format_name):
                 "start": entry["start"],
                 "end": entry["end"]
             }
-            x = entry["locale"]
             attribute_keys = [key for key in entry.keys() if key.startswith("attribute_")]
             for key in attribute_keys:
                 formatted_entry[key] = entry[key]
