@@ -18,11 +18,7 @@ from collections import OrderedDict
 from copy import deepcopy
 from enum import Enum
 from tempfile import TemporaryDirectory
-from datumaro.components.errors import (
-    DatasetError,
-    DatasetImportError,
-    DatasetNotFoundError,
-)
+from datumaro.components.errors import DatasetError, DatasetImportError, DatasetNotFoundError
 
 from django.db import transaction
 from django.db.models.query import Prefetch
@@ -39,28 +35,20 @@ from cvat.apps.events.handlers import handle_annotations_change
 from cvat.apps.profiler import silk_profile
 
 from cvat.apps.dataset_manager.annotation import AnnotationIR, AnnotationManager
-from cvat.apps.dataset_manager.bindings import (
-    TaskData,
-    JobData,
-    CvatImportError,
-    CvatDatasetNotFoundError,
-)
+from cvat.apps.dataset_manager.bindings import TaskData, JobData, CvatImportError, CvatDatasetNotFoundError
 from cvat.apps.dataset_manager.formats.registry import make_exporter, make_importer
 from cvat.apps.dataset_manager.util import add_prefetch_fields, bulk_create, get_cached
 
 dlogger = DatasetLogManager()
 slogger = ServerLogManager(__name__)
 
-
 class dotdict(OrderedDict):
     """dot.notation access to dictionary attributes"""
-
     __getattr__ = OrderedDict.get
     __setattr__ = OrderedDict.__setitem__
     __delattr__ = OrderedDict.__delitem__
     __eq__ = lambda self, other: self.id == other.id
     __hash__ = lambda self: self.id
-
 
 class PatchAction(str, Enum):
     CREATE = "create"
@@ -73,7 +61,6 @@ class PatchAction(str, Enum):
 
     def __str__(self):
         return self.value
-
 
 def merge_table_rows(rows, keys_for_merge, field_id):
     # It is necessary to keep a stable order of original rows
@@ -91,7 +78,7 @@ def merge_table_rows(rows, keys_for_merge, field_id):
                 merged_rows[row_id][key] = []
 
         for key in keys_for_merge:
-            item = dotdict({v.split("__", 1)[-1]: row[v] for v in keys_for_merge[key]})
+            item = dotdict({v.split('__', 1)[-1]:row[v] for v in keys_for_merge[key]})
             if item.id is not None:
                 merged_rows[row_id][key].append(item)
 
@@ -103,39 +90,35 @@ def merge_table_rows(rows, keys_for_merge, field_id):
 
     return list(merged_rows.values())
 
-
 class JobAnnotation:
     @classmethod
     def add_prefetch_info(cls, queryset):
         assert issubclass(queryset.model, models.Job)
 
-        label_qs = add_prefetch_fields(
-            models.Label.objects.all(),
-            [
-                "skeleton",
-                "parent",
-                "attributespec_set",
-            ],
-        )
+        label_qs = add_prefetch_fields(models.Label.objects.all(), [
+            'skeleton',
+            'parent',
+            'attributespec_set',
+        ])
         label_qs = JobData.add_prefetch_info(label_qs)
 
         return queryset.select_related(
-            "segment",
-            "segment__task",
+            'segment',
+            'segment__task',
         ).prefetch_related(
-            "segment__task__project",
-            "segment__task__owner",
-            "segment__task__assignee",
-            "segment__task__project__owner",
-            "segment__task__project__assignee",
-            Prefetch(
-                "segment__task__data",
-                queryset=models.Data.objects.select_related("video").prefetch_related(
-                    Prefetch("images", queryset=models.Image.objects.order_by("frame"))
-                ),
-            ),
-            Prefetch("segment__task__label_set", queryset=label_qs),
-            Prefetch("segment__task__project__label_set", queryset=label_qs),
+            'segment__task__project',
+            'segment__task__owner',
+            'segment__task__assignee',
+            'segment__task__project__owner',
+            'segment__task__project__assignee',
+
+            Prefetch('segment__task__data',
+                queryset=models.Data.objects.select_related('video').prefetch_related(
+                    Prefetch('images', queryset=models.Image.objects.order_by('frame'))
+            )),
+
+            Prefetch('segment__task__label_set', queryset=label_qs),
+            Prefetch('segment__task__project__label_set', queryset=label_qs),
         )
 
     def __init__(self, pk, *, is_prefetched=False, queryset=None):
@@ -143,9 +126,9 @@ class JobAnnotation:
             queryset = self.add_prefetch_info(models.Job.objects)
 
         if is_prefetched:
-            self.db_job: models.Job = (
-                queryset.select_related("segment__task").select_for_update().get(id=pk)
-            )
+            self.db_job: models.Job = queryset.select_related(
+                'segment__task'
+            ).select_for_update().get(id=pk)
         else:
             self.db_job: models.Job = get_cached(queryset, pk=int(pk))
 
@@ -154,14 +137,9 @@ class JobAnnotation:
         self.stop_frame = db_segment.stop_frame
         self.ir_data = AnnotationIR(db_segment.task.dimension)
 
-        self.db_labels = {
-            db_label.id: db_label
-            for db_label in (
-                db_segment.task.project.label_set.all()
-                if db_segment.task.project_id
-                else db_segment.task.label_set.all()
-            )
-        }
+        self.db_labels = {db_label.id:db_label
+            for db_label in (db_segment.task.project.label_set.all()
+            if db_segment.task.project_id else db_segment.task.label_set.all())}
 
         self.db_attributes = {}
         for db_label in self.db_labels.values():
@@ -171,20 +149,14 @@ class JobAnnotation:
                 "all": OrderedDict(),
             }
             for db_attr in db_label.attributespec_set.all():
-                default_value = dotdict(
-                    [
-                        ("spec_id", db_attr.id),
-                        ("value", db_attr.default_value),
-                    ]
-                )
+                default_value = dotdict([
+                    ('spec_id', db_attr.id),
+                    ('value', db_attr.default_value),
+                ])
                 if db_attr.mutable:
-                    self.db_attributes[db_label.id]["mutable"][
-                        db_attr.id
-                    ] = default_value
+                    self.db_attributes[db_label.id]["mutable"][db_attr.id] = default_value
                 else:
-                    self.db_attributes[db_label.id]["immutable"][
-                        db_attr.id
-                    ] = default_value
+                    self.db_attributes[db_label.id]["immutable"][db_attr.id] = default_value
 
                 self.db_attributes[db_label.id]["all"][db_attr.id] = default_value
 
@@ -267,20 +239,14 @@ class JobAnnotation:
                 track_attributes = track.pop("attributes", [])
                 shapes = track.pop("shapes")
                 elements = track.pop("elements", [])
-                db_track = models.LabeledTrack(
-                    job=self.db_job, parent=parent_track, **track
-                )
+                db_track = models.LabeledTrack(job=self.db_job, parent=parent_track, **track)
 
                 self._validate_label_for_existence(db_track.label_id)
 
                 for attr in track_attributes:
-                    db_attr_val = models.LabeledTrackAttributeVal(
-                        **attr, track_id=len(db_tracks)
-                    )
+                    db_attr_val = models.LabeledTrackAttributeVal(**attr, track_id=len(db_tracks))
 
-                    self._validate_attribute_for_existence(
-                        db_attr_val, db_track.label_id, "immutable"
-                    )
+                    self._validate_attribute_for_existence(db_attr_val, db_track.label_id, "immutable")
 
                     db_track_attr_vals.append(db_attr_val)
 
@@ -289,13 +255,9 @@ class JobAnnotation:
                     db_shape = models.TrackedShape(**shape, track_id=len(db_tracks))
 
                     for attr in shape_attributes:
-                        db_attr_val = models.TrackedShapeAttributeVal(
-                            **attr, shape_id=len(db_shapes)
-                        )
+                        db_attr_val = models.TrackedShapeAttributeVal(**attr, shape_id=len(db_shapes))
 
-                        self._validate_attribute_for_existence(
-                            db_attr_val, db_track.label_id, "mutable"
-                        )
+                        self._validate_attribute_for_existence(db_attr_val, db_track.label_id, "mutable")
 
                         db_shape_attr_vals.append(db_attr_val)
 
@@ -312,7 +274,7 @@ class JobAnnotation:
             db_tracks = bulk_create(
                 db_model=models.LabeledTrack,
                 objects=db_tracks,
-                flt_param={"job_id": self.db_job.id},
+                flt_param={"job_id": self.db_job.id}
             )
 
             for db_attr_val in db_track_attr_vals:
@@ -321,7 +283,7 @@ class JobAnnotation:
             bulk_create(
                 db_model=models.LabeledTrackAttributeVal,
                 objects=db_track_attr_vals,
-                flt_param={},
+                flt_param={}
             )
 
             for db_shape in db_shapes:
@@ -330,7 +292,7 @@ class JobAnnotation:
             db_shapes = bulk_create(
                 db_model=models.TrackedShape,
                 objects=db_shapes,
-                flt_param={"track__job_id": self.db_job.id},
+                flt_param={"track__job_id": self.db_job.id}
             )
 
             for db_attr_val in db_shape_attr_vals:
@@ -339,7 +301,7 @@ class JobAnnotation:
             bulk_create(
                 db_model=models.TrackedShapeAttributeVal,
                 objects=db_shape_attr_vals,
-                flt_param={},
+                flt_param={}
             )
 
             shape_idx = 0
@@ -364,20 +326,14 @@ class JobAnnotation:
                 shape_elements = shape.pop("elements", [])
                 # FIXME: need to clamp points (be sure that all of them inside the image)
                 # Should we check here or implement a validator?
-                db_shape = models.LabeledShape(
-                    job=self.db_job, parent=parent_shape, **shape
-                )
+                db_shape = models.LabeledShape(job=self.db_job, parent=parent_shape, **shape)
 
                 self._validate_label_for_existence(db_shape.label_id)
 
                 for attr in attributes:
-                    db_attr_val = models.LabeledShapeAttributeVal(
-                        **attr, shape_id=len(db_shapes)
-                    )
+                    db_attr_val = models.LabeledShapeAttributeVal(**attr, shape_id=len(db_shapes))
 
-                    self._validate_attribute_for_existence(
-                        db_attr_val, db_shape.label_id, "all"
-                    )
+                    self._validate_attribute_for_existence(db_attr_val, db_shape.label_id, "all")
 
                     db_attr_vals.append(db_attr_val)
 
@@ -389,7 +345,7 @@ class JobAnnotation:
             db_shapes = bulk_create(
                 db_model=models.LabeledShape,
                 objects=db_shapes,
-                flt_param={"job_id": self.db_job.id},
+                flt_param={"job_id": self.db_job.id}
             )
 
             for db_attr_val in db_attr_vals:
@@ -398,7 +354,7 @@ class JobAnnotation:
             bulk_create(
                 db_model=models.LabeledShapeAttributeVal,
                 objects=db_attr_vals,
-                flt_param={},
+                flt_param={}
             )
 
             for shape, db_shape in zip(shapes, db_shapes):
@@ -422,9 +378,7 @@ class JobAnnotation:
             for attr in attributes:
                 db_attr_val = models.LabeledImageAttributeVal(**attr)
 
-                self._validate_attribute_for_existence(
-                    db_attr_val, db_tag.label_id, "all"
-                )
+                self._validate_attribute_for_existence(db_attr_val, db_tag.label_id, "all")
 
                 db_attr_val.tag_id = len(db_tags)
                 db_attr_vals.append(db_attr_val)
@@ -435,14 +389,16 @@ class JobAnnotation:
         db_tags = bulk_create(
             db_model=models.LabeledImage,
             objects=db_tags,
-            flt_param={"job_id": self.db_job.id},
+            flt_param={"job_id": self.db_job.id}
         )
 
         for db_attr_val in db_attr_vals:
             db_attr_val.image_id = db_tags[db_attr_val.tag_id].id
 
         bulk_create(
-            db_model=models.LabeledImageAttributeVal, objects=db_attr_vals, flt_param={}
+            db_model=models.LabeledImageAttributeVal,
+            objects=db_attr_vals,
+            flt_param={}
         )
 
         for tag, db_tag in zip(tags, db_tags):
@@ -517,9 +473,9 @@ class JobAnnotation:
             # It is not important for us that data had some "invalid" objects
             # which were skipped (not actually deleted). The main idea is to
             # say that all requested objects are absent in DB after the method.
-            self.ir_data.tags = data["tags"]
-            self.ir_data.shapes = data["shapes"]
-            self.ir_data.tracks = data["tracks"]
+            self.ir_data.tags = data['tags']
+            self.ir_data.shapes = data['shapes']
+            self.ir_data.tracks = data['tracks']
 
             labeledimage_set.delete()
             labeledshape_set.delete()
@@ -545,50 +501,40 @@ class JobAnnotation:
         shape_attribute_specs_set = set(attr.spec_id for attr in attributeval_set)
         for db_attr in default_attribute_values:
             if db_attr.spec_id not in shape_attribute_specs_set:
-                attributeval_set.append(
-                    dotdict(
-                        [
-                            ("spec_id", db_attr.spec_id),
-                            ("value", db_attr.value),
-                        ]
-                    )
-                )
+                attributeval_set.append(dotdict([
+                    ('spec_id', db_attr.spec_id),
+                    ('value', db_attr.value),
+                ]))
 
     def _init_tags_from_db(self):
         # NOTE: do not use .prefetch_related() with .values() since it's useless:
         # https://github.com/cvat-ai/cvat/pull/7748#issuecomment-2063695007
-        db_tags = (
-            self.db_job.labeledimage_set.values(
-                "id",
-                "frame",
-                "label_id",
-                "group",
-                "source",
-                "labeledimageattributeval__spec_id",
-                "labeledimageattributeval__value",
-                "labeledimageattributeval__id",
-            )
-            .order_by("frame")
-            .iterator(chunk_size=2000)
-        )
+        db_tags = self.db_job.labeledimage_set.values(
+            'id',
+            'frame',
+            'label_id',
+            'group',
+            'source',
+            'labeledimageattributeval__spec_id',
+            'labeledimageattributeval__value',
+            'labeledimageattributeval__id',
+        ).order_by('frame').iterator(chunk_size=2000)
 
         db_tags = merge_table_rows(
             rows=db_tags,
             keys_for_merge={
                 "labeledimageattributeval_set": [
-                    "labeledimageattributeval__spec_id",
-                    "labeledimageattributeval__value",
-                    "labeledimageattributeval__id",
+                    'labeledimageattributeval__spec_id',
+                    'labeledimageattributeval__value',
+                    'labeledimageattributeval__id',
                 ],
             },
-            field_id="id",
+            field_id='id',
         )
 
         for db_tag in db_tags:
-            self._extend_attributes(
-                db_tag.labeledimageattributeval_set,
-                self.db_attributes[db_tag.label_id]["all"].values(),
-            )
+            self._extend_attributes(db_tag.labeledimageattributeval_set,
+                self.db_attributes[db_tag.label_id]["all"].values())
 
         serializer = serializers.LabeledImageSerializerFromDB(db_tags, many=True)
         self.ir_data.tags = serializer.data
@@ -596,53 +542,47 @@ class JobAnnotation:
     def _init_shapes_from_db(self):
         # NOTE: do not use .prefetch_related() with .values() since it's useless:
         # https://github.com/cvat-ai/cvat/pull/7748#issuecomment-2063695007
-        db_shapes = (
-            self.db_job.labeledshape_set.values(
-                "id",
-                "label_id",
-                "type",
-                "frame",
-                "group",
-                "source",
-                "occluded",
-                "outside",
-                "z_order",
-                "rotation",
-                "points",
-                "parent",
-                "transcript",
-                "gender",
-                "age",
-                "locale",
-                "accent",
-                "emotion",
-                "labeledshapeattributeval__spec_id",
-                "labeledshapeattributeval__value",
-                "labeledshapeattributeval__id",
-            )
-            .order_by("frame")
-            .iterator(chunk_size=2000)
-        )
+        db_shapes = self.db_job.labeledshape_set.values(
+            'id',
+            'label_id',
+            'type',
+            'frame',
+            'group',
+            'source',
+            'occluded',
+            'outside',
+            'z_order',
+            'rotation',
+            'points',
+            'parent',
+            'transcript',
+            'gender',
+            'age',
+            'locale',
+            'accent',
+            'emotion',
+            'labeledshapeattributeval__spec_id',
+            'labeledshapeattributeval__value',
+            'labeledshapeattributeval__id',
+        ).order_by('frame').iterator(chunk_size=2000)
 
         db_shapes = merge_table_rows(
             rows=db_shapes,
             keys_for_merge={
-                "labeledshapeattributeval_set": [
-                    "labeledshapeattributeval__spec_id",
-                    "labeledshapeattributeval__value",
-                    "labeledshapeattributeval__id",
+                'labeledshapeattributeval_set': [
+                    'labeledshapeattributeval__spec_id',
+                    'labeledshapeattributeval__value',
+                    'labeledshapeattributeval__id',
                 ],
             },
-            field_id="id",
+            field_id='id',
         )
 
         shapes = {}
         elements = {}
         for db_shape in db_shapes:
-            self._extend_attributes(
-                db_shape.labeledshapeattributeval_set,
-                self.db_attributes[db_shape.label_id]["all"].values(),
-            )
+            self._extend_attributes(db_shape.labeledshapeattributeval_set,
+                self.db_attributes[db_shape.label_id]["all"].values())
 
             if db_shape.parent is None:
                 db_shape.elements = []
@@ -655,40 +595,34 @@ class JobAnnotation:
         for shape_id, shape_elements in elements.items():
             shapes[shape_id].elements = shape_elements
 
-        serializer = serializers.LabeledShapeSerializerFromDB(
-            list(shapes.values()), many=True
-        )
+        serializer = serializers.LabeledShapeSerializerFromDB(list(shapes.values()), many=True)
         self.ir_data.shapes = serializer.data
 
     def _init_tracks_from_db(self):
         # NOTE: do not use .prefetch_related() with .values() since it's useless:
         # https://github.com/cvat-ai/cvat/pull/7748#issuecomment-2063695007
-        db_tracks = (
-            self.db_job.labeledtrack_set.values(
-                "id",
-                "frame",
-                "label_id",
-                "group",
-                "source",
-                "parent",
-                "labeledtrackattributeval__spec_id",
-                "labeledtrackattributeval__value",
-                "labeledtrackattributeval__id",
-                "trackedshape__type",
-                "trackedshape__occluded",
-                "trackedshape__z_order",
-                "trackedshape__rotation",
-                "trackedshape__points",
-                "trackedshape__id",
-                "trackedshape__frame",
-                "trackedshape__outside",
-                "trackedshape__trackedshapeattributeval__spec_id",
-                "trackedshape__trackedshapeattributeval__value",
-                "trackedshape__trackedshapeattributeval__id",
-            )
-            .order_by("id", "trackedshape__frame")
-            .iterator(chunk_size=2000)
-        )
+        db_tracks = self.db_job.labeledtrack_set.values(
+            "id",
+            "frame",
+            "label_id",
+            "group",
+            "source",
+            "parent",
+            "labeledtrackattributeval__spec_id",
+            "labeledtrackattributeval__value",
+            "labeledtrackattributeval__id",
+            "trackedshape__type",
+            "trackedshape__occluded",
+            "trackedshape__z_order",
+            "trackedshape__rotation",
+            "trackedshape__points",
+            "trackedshape__id",
+            "trackedshape__frame",
+            "trackedshape__outside",
+            "trackedshape__trackedshapeattributeval__spec_id",
+            "trackedshape__trackedshapeattributeval__value",
+            "trackedshape__trackedshapeattributeval__id",
+        ).order_by('id', 'trackedshape__frame').iterator(chunk_size=2000)
 
         db_tracks = merge_table_rows(
             rows=db_tracks,
@@ -698,7 +632,7 @@ class JobAnnotation:
                     "labeledtrackattributeval__value",
                     "labeledtrackattributeval__id",
                 ],
-                "trackedshape_set": [
+                "trackedshape_set":[
                     "trackedshape__type",
                     "trackedshape__occluded",
                     "trackedshape__z_order",
@@ -718,40 +652,28 @@ class JobAnnotation:
         tracks = {}
         elements = {}
         for db_track in db_tracks:
-            db_track["trackedshape_set"] = merge_table_rows(
-                db_track["trackedshape_set"],
-                {
-                    "trackedshapeattributeval_set": [
-                        "trackedshapeattributeval__value",
-                        "trackedshapeattributeval__spec_id",
-                        "trackedshapeattributeval__id",
-                    ]
-                },
-                "id",
-            )
+            db_track["trackedshape_set"] = merge_table_rows(db_track["trackedshape_set"], {
+                'trackedshapeattributeval_set': [
+                    'trackedshapeattributeval__value',
+                    'trackedshapeattributeval__spec_id',
+                    'trackedshapeattributeval__id',
+                ]
+            }, 'id')
 
             # A result table can consist many equal rows for track/shape attributes
             # We need filter unique attributes manually
-            db_track["labeledtrackattributeval_set"] = list(
-                set(db_track["labeledtrackattributeval_set"])
-            )
-            self._extend_attributes(
-                db_track.labeledtrackattributeval_set,
-                self.db_attributes[db_track.label_id]["immutable"].values(),
-            )
+            db_track["labeledtrackattributeval_set"] = list(set(db_track["labeledtrackattributeval_set"]))
+            self._extend_attributes(db_track.labeledtrackattributeval_set,
+                self.db_attributes[db_track.label_id]["immutable"].values())
 
-            default_attribute_values = self.db_attributes[db_track.label_id][
-                "mutable"
-            ].values()
+            default_attribute_values = self.db_attributes[db_track.label_id]["mutable"].values()
             for db_shape in db_track["trackedshape_set"]:
                 db_shape["trackedshapeattributeval_set"] = list(
                     set(db_shape["trackedshapeattributeval_set"])
                 )
                 # in case of trackedshapes need to interpolate attriute values and extend it
                 # by previous shape attribute values (not default values)
-                self._extend_attributes(
-                    db_shape["trackedshapeattributeval_set"], default_attribute_values
-                )
+                self._extend_attributes(db_shape["trackedshapeattributeval_set"], default_attribute_values)
                 default_attribute_values = db_shape["trackedshapeattributeval_set"]
 
             if db_track.parent is None:
@@ -765,13 +687,11 @@ class JobAnnotation:
         for track_id, track_elements in elements.items():
             tracks[track_id].elements = track_elements
 
-        serializer = serializers.LabeledTrackSerializerFromDB(
-            list(tracks.values()), many=True
-        )
+        serializer = serializers.LabeledTrackSerializerFromDB(list(tracks.values()), many=True)
         self.ir_data.tracks = serializer.data
 
     def _init_version_from_db(self):
-        self.ir_data.version = 0  # FIXME: should be removed in the future
+        self.ir_data.version = 0 # FIXME: should be removed in the future
 
     def init_from_db(self):
         self._init_tags_from_db()
@@ -783,7 +703,7 @@ class JobAnnotation:
     def data(self):
         return self.ir_data.data
 
-    def export(self, dst_file, exporter, host="", **options):
+    def export(self, dst_file, exporter, host='', **options):
         job_data = JobData(
             annotation_ir=self.ir_data,
             db_job=self.db_job,
@@ -822,40 +742,30 @@ class JobAnnotation:
 
         self.create(job_data.data.slice(self.start_frame, self.stop_frame).serialize())
 
-
 class TaskAnnotation:
     def __init__(self, pk):
         self.db_task = models.Task.objects.prefetch_related(
-            Prefetch("data__images", queryset=models.Image.objects.order_by("frame"))
+            Prefetch('data__images', queryset=models.Image.objects.order_by('frame'))
         ).get(id=pk)
 
         # Postgres doesn't guarantee an order by default without explicit order_by
-        self.db_jobs = (
-            models.Job.objects.select_related("segment")
-            .filter(
-                segment__task_id=pk,
-                type=models.JobType.ANNOTATION.value,
-            )
-            .order_by("id")
-        )
+        self.db_jobs = models.Job.objects.select_related("segment").filter(
+            segment__task_id=pk, type=models.JobType.ANNOTATION.value,
+        ).order_by('id')
         self.ir_data = AnnotationIR(self.db_task.dimension)
 
     def reset(self):
         self.ir_data.reset()
 
     def _patch_data(self, data, action):
-        _data = (
-            data
-            if isinstance(data, AnnotationIR)
-            else AnnotationIR(self.db_task.dimension, data)
-        )
+        _data = data if isinstance(data, AnnotationIR) else AnnotationIR(self.db_task.dimension, data)
         splitted_data = {}
         jobs = {}
         for db_job in self.db_jobs:
             jid = db_job.id
             start = db_job.segment.start_frame
             stop = db_job.segment.stop_frame
-            jobs[jid] = {"start": start, "stop": stop}
+            jobs[jid] = { "start": start, "stop": stop }
             splitted_data[jid] = _data.slice(start, stop)
 
         for jid, job_data in splitted_data.items():
@@ -866,9 +776,7 @@ class TaskAnnotation:
                 _data.data = patch_job_data(jid, job_data, action)
             if _data.version > self.ir_data.version:
                 self.ir_data.version = _data.version
-            self._merge_data(
-                _data, jobs[jid]["start"], self.db_task.overlap, self.db_task.dimension
-            )
+            self._merge_data(_data, jobs[jid]["start"], self.db_task.overlap, self.db_task.dimension)
 
     def _merge_data(self, data, start_frame, overlap, dimension):
         annotation_manager = AnnotationManager(self.ir_data)
@@ -907,7 +815,7 @@ class TaskAnnotation:
             dimension = self.db_task.dimension
             self._merge_data(annotation.ir_data, start_frame, overlap, dimension)
 
-    def export(self, dst_file, exporter, host="", **options):
+    def export(self, dst_file, exporter, host='', **options):
         task_data = TaskData(
             annotation_ir=self.ir_data,
             db_task=self.db_task,
@@ -959,7 +867,6 @@ def get_job_data(pk):
 
     return annotation.data
 
-
 @silk_profile(name="POST job data")
 @transaction.atomic
 def put_job_data(pk, data):
@@ -967,7 +874,6 @@ def put_job_data(pk, data):
     annotation.put(data)
 
     return annotation.data
-
 
 @silk_profile(name="UPDATE job data")
 @plugin_decorator
@@ -983,13 +889,11 @@ def patch_job_data(pk, data, action):
 
     return annotation.data
 
-
 @silk_profile(name="DELETE job data")
 @transaction.atomic
 def delete_job_data(pk):
     annotation = JobAnnotation(pk)
     annotation.delete()
-
 
 def export_job(job_id, dst_file, format_name, server_url=None, save_images=False):
     # For big tasks dump function may run for a long time and
@@ -1002,24 +906,18 @@ def export_job(job_id, dst_file, format_name, server_url=None, save_images=False
         job.init_from_db()
 
     exporter = make_exporter(format_name)
-    with open(dst_file, "wb") as f:
+    with open(dst_file, 'wb') as f:
         job.export(f, exporter, host=server_url, save_images=save_images)
 
-
-def jobChunkPathGetter(
-    db_data, start, stop, task_dimension, data_quality, data_num, job
-):
+def jobChunkPathGetter(db_data, start, stop, task_dimension, data_quality, data_num, job):
     # db_data = Task Data
     frame_provider = FrameProvider(db_data, task_dimension)
 
     # self.type = data_type
     number = int(data_num) if data_num is not None else None
 
-    quality = (
-        FrameProvider.Quality.COMPRESSED
-        if data_quality == "compressed"
-        else FrameProvider.Quality.ORIGINAL
-    )
+    quality = FrameProvider.Quality.COMPRESSED \
+            if data_quality == 'compressed' else FrameProvider.Quality.ORIGINAL
 
     path = os.path.realpath(frame_provider.get_chunk(number, quality))
     # pylint: disable=superfluous-parens
@@ -1028,13 +926,10 @@ def jobChunkPathGetter(
 
     return path
 
-
 def chunk_annotation_audio(concat_array, output_folder, annotations):
     # Convert NumPy array to AudioSegment
-    sr = 44100  # sampling rate
-    audio_segment = AudioSegment(
-        concat_array.tobytes(), frame_rate=sr, channels=1, sample_width=4
-    )
+    sr = 44100 # sampling rate
+    audio_segment = AudioSegment(concat_array.tobytes(), frame_rate=sr, channels=1, sample_width=4)
 
     try:
         y = audio_segment.get_array_of_samples()
@@ -1045,8 +940,8 @@ def chunk_annotation_audio(concat_array, output_folder, annotations):
 
     for _, shape in enumerate(annotations, 1):
 
-        start_time = min(shape["points"][:2])
-        end_time = max(shape["points"][2:])
+        start_time = min(shape['points'][:2])
+        end_time = max(shape['points'][2:])
 
         # Convert time points to sample indices
         start_sample = int(start_time * sr)
@@ -1063,12 +958,9 @@ def chunk_annotation_audio(concat_array, output_folder, annotations):
 
     return data
 
-
-def create_annotation_clips_zip(
-    annotation_audio_chunk_file_paths, meta_data_file_path, output_folder, dst_file
-):
-    data_folder = os.path.join(output_folder, "data")
-    clips_folder = os.path.join(data_folder, "clips")
+def create_annotation_clips_zip(annotation_audio_chunk_file_paths, meta_data_file_path, output_folder, dst_file):
+    data_folder = os.path.join(output_folder, 'data')
+    clips_folder = os.path.join(data_folder, 'clips')
     os.makedirs(clips_folder, exist_ok=True)
 
     # Copy audio files to clips folder
@@ -1080,8 +972,8 @@ def create_annotation_clips_zip(
     shutil.copy(meta_data_file_path, os.path.join(data_folder, "data.tsv"))
 
     # Create zip file
-    zip_filename = os.path.join(output_folder, "common_voice.zip")
-    with zipfile.ZipFile(zip_filename, "w") as zipf:
+    zip_filename = os.path.join(output_folder, 'common_voice.zip')
+    with zipfile.ZipFile(zip_filename, 'w') as zipf:
         for root, _, files in os.walk(data_folder):
             for file in files:
                 file_path = os.path.join(root, file)
@@ -1093,7 +985,6 @@ def create_annotation_clips_zip(
     # Move the zip to the dst_file location
     shutil.move(zip_filename, dst_file)
 
-
 def get_np_audio_array_from_job(job_id):
 
     with transaction.atomic():
@@ -1103,25 +994,17 @@ def get_np_audio_array_from_job(job_id):
     job_data_chunk_size = job.db_job.segment.task.data.chunk_size
     task_dimension = job.db_job.segment.task.dimension
 
-    start = job.start_frame / job_data_chunk_size
-    stop = job.stop_frame / job_data_chunk_size
+    start = job.start_frame/job_data_chunk_size
+    stop = job.stop_frame/job_data_chunk_size
 
     audio_array_buffer = []
-    for i in range(math.trunc(start), math.trunc(stop) + 1):
+    for i in range(math.trunc(start), math.trunc(stop)+1):
         db_job = job.db_job
         # data_type = "chunk"
         data_num = i
-        data_quality = "compressed"
+        data_quality = 'compressed'
 
-        chunk_path = jobChunkPathGetter(
-            job.db_job.segment.task.data,
-            job.start_frame,
-            job.stop_frame,
-            task_dimension,
-            data_quality,
-            data_num,
-            db_job,
-        )
+        chunk_path = jobChunkPathGetter(job.db_job.segment.task.data, job.start_frame, job.stop_frame, task_dimension, data_quality, data_num, db_job)
 
         _, audio_data = wavfile.read(chunk_path)
 
@@ -1133,7 +1016,6 @@ def get_np_audio_array_from_job(job_id):
     concat_array = np.concatenate(audio_array_buffer, axis=0)
 
     return concat_array
-
 
 def get_audio_job_export_data(job_id, dst_file, job, temp_dir_base, temp_dir):
 
@@ -1165,6 +1047,7 @@ def get_audio_job_export_data(job_id, dst_file, job, temp_dir_base, temp_dir):
         slogger.glob.debug("JOB LABELS ATTRIBUTES")
         slogger.glob.debug(json.dumps(attributes_list))
 
+
     slogger.glob.debug("JOB LABELS")
     slogger.glob.debug(json.dumps(labels_list))
 
@@ -1175,9 +1058,7 @@ def get_audio_job_export_data(job_id, dst_file, job, temp_dir_base, temp_dir):
     #     wave_file.setframerate(44100)
     #     wave_file.writeframes(concat_array)
 
-    annotation_audio_chunk_file_paths = chunk_annotation_audio(
-        concat_array, temp_dir, annotations
-    )
+    annotation_audio_chunk_file_paths = chunk_annotation_audio(concat_array, temp_dir, annotations)
 
     for i, annotation in enumerate(annotations):
         entry = {
@@ -1191,15 +1072,13 @@ def get_audio_job_export_data(job_id, dst_file, job, temp_dir_base, temp_dir):
             "emotion": annotation.get("emotion", ""),
             "label": labels_mapping[annotation["label_id"]]["name"],
             "start": annotation["points"][0],
-            "end": annotation["points"][3],
+            "end": annotation["points"][3]
         }
 
         attributes = annotation.get("attributes", [])
         for idx, attr in enumerate(attributes):
             annotation_attribute_id = attr.get("spec_id", "")
-            label_attributes = labels_mapping[annotation["label_id"]].get(
-                "attributes", {}
-            )
+            label_attributes = labels_mapping[annotation["label_id"]].get("attributes", {})
             annotation_attribute = label_attributes.get(annotation_attribute_id, {})
             attribute_name = annotation_attribute.get("name", f"attribute_{idx}_name")
             attribute_val = attr.get("value", "")
@@ -1209,12 +1088,12 @@ def get_audio_job_export_data(job_id, dst_file, job, temp_dir_base, temp_dir):
 
         final_data.append(entry)
 
+
     slogger.glob.debug("JOB ANNOTATION DATA")
     slogger.glob.debug(json.dumps(final_data))
     slogger.glob.debug("All ANNOTATIONs DATA")
     slogger.glob.debug(json.dumps(annotations))
     return final_data, annotation_audio_chunk_file_paths
-
 
 def convert_annotation_data_format(data, format_name):
     if format_name == "Common Voice":
@@ -1231,28 +1110,15 @@ def convert_annotation_data_format(data, format_name):
                 "text": entry["sentence"],
                 "label": entry["label"],
                 "start": entry["start"],
-                "end": entry["end"],
+                "end": entry["end"]
             }
-            attribute_keys = [
-                key for key in entry.keys() if key.startswith("attribute_")
-            ]
+            attribute_keys = [key for key in entry.keys() if key.startswith("attribute_")]
             for key in attribute_keys:
                 formatted_entry[key] = entry[key]
             formatted_data.append(formatted_entry)
         return formatted_data
     elif format_name == "VoxPopuli":
-        language_id_mapping = {
-            "en-US": 0,
-            "es-ES": 1,
-            "fr-FR": 2,
-            "zh-CN": 3,
-            "hi-IN": 4,
-            "ar-EG": 5,
-            "pt-BR": 6,
-            "ja-JP": 7,
-            "de-DE": 8,
-            "ru-RU": 9,
-        }
+        language_id_mapping = {"en-US": 0,"es-ES":1,"fr-FR":2,"zh-CN":3,"hi-IN":4,"ar-EG":5,"pt-BR":6,"ja-JP":7,"de-DE":8,"ru-RU":9}
         formatted_data = []
         for entry in data:
             formatted_entry = {
@@ -1268,11 +1134,10 @@ def convert_annotation_data_format(data, format_name):
                 "accent": entry["accents"],
                 "label": entry["label"],
                 "start": entry["start"],
-                "end": entry["end"],
+                "end": entry["end"]
             }
-            attribute_keys = [
-                key for key in entry.keys() if key.startswith("attribute_")
-            ]
+            x = entry["locale"]
+            attribute_keys = [key for key in entry.keys() if key.startswith("attribute_")]
             for key in attribute_keys:
                 formatted_entry[key] = entry[key]
             formatted_data.append(formatted_entry)
@@ -1289,15 +1154,14 @@ def convert_annotation_data_format(data, format_name):
                 "speaker_id": "",
                 "label": entry["label"],
                 "start": entry["start"],
-                "end": entry["end"],
+                "end": entry["end"]
             }
-            attribute_keys = [
-                key for key in entry.keys() if key.startswith("attribute_")
-            ]
+            attribute_keys = [key for key in entry.keys() if key.startswith("attribute_")]
             for key in attribute_keys:
                 formatted_entry[key] = entry[key]
             formatted_data.append(formatted_entry)
         return formatted_data
+
     elif format_name == "VoxCeleb":
         formatted_data = []
         for entry in data:
@@ -1306,21 +1170,20 @@ def convert_annotation_data_format(data, format_name):
                 "file": entry["path"],
                 "text": entry["sentence"],
                 "gender": entry["gender"],
-                "nationality": "",
+                "nationality" : "",
                 "age": entry["age"],
                 "id": str(uuid.uuid4()),
                 "speaker_id": "",
                 "label": entry["label"],
                 "start": entry["start"],
-                "end": entry["end"],
+                "end": entry["end"]
             }
-            attribute_keys = [
-                key for key in entry.keys() if key.startswith("attribute_")
-            ]
+            attribute_keys = [key for key in entry.keys() if key.startswith("attribute_")]
             for key in attribute_keys:
                 formatted_entry[key] = entry[key]
             formatted_data.append(formatted_entry)
         return formatted_data
+
     elif format_name == "VCTK_Corpus":
         formatted_data = []
         for entry in data:
@@ -1335,29 +1198,18 @@ def convert_annotation_data_format(data, format_name):
                 "speaker_id": "",
                 "label": entry["label"],
                 "start": entry["start"],
-                "end": entry["end"],
+                "end": entry["end"]
             }
-            attribute_keys = [
-                key for key in entry.keys() if key.startswith("attribute_")
-            ]
+            attribute_keys = [key for key in entry.keys() if key.startswith("attribute_")]
             for key in attribute_keys:
                 formatted_entry[key] = entry[key]
             formatted_data.append(formatted_entry)
         return formatted_data
+
     elif format_name == "LibriVox":
-        language_id_mapping = {
-            "en-US": 0,
-            "es-ES": 1,
-            "fr-FR": 2,
-            "zh-CN": 3,
-            "hi-IN": 4,
-            "ar-EG": 5,
-            "pt-BR": 6,
-            "ja-JP": 7,
-            "de-DE": 8,
-            "ru-RU": 9,
-        }
+
         formatted_data = []
+        language_id_mapping = {"en-US": 0,"es-ES":1,"fr-FR":2,"zh-CN":3,"hi-IN":4,"ar-EG":5,"pt-BR":6,"ja-JP":7,"de-DE":8,"ru-RU":9 }
         for entry in data:
             formatted_entry = {
                 "job_id": entry["job_id"],
@@ -1372,11 +1224,9 @@ def convert_annotation_data_format(data, format_name):
                 "speaker_id": "",
                 "label": entry["label"],
                 "start": entry["start"],
-                "end": entry["end"],
+                "end": entry["end"]
             }
-            attribute_keys = [
-                key for key in entry.keys() if key.startswith("attribute_")
-            ]
+            attribute_keys = [key for key in entry.keys() if key.startswith("attribute_")]
             for key in attribute_keys:
                 formatted_entry[key] = entry[key]
             formatted_data.append(formatted_entry)
@@ -1384,10 +1234,7 @@ def convert_annotation_data_format(data, format_name):
 
     return data
 
-
-def export_audino_job(
-    job_id, dst_file, format_name, server_url=None, save_images=False
-):
+def export_audino_job(job_id, dst_file, format_name, server_url=None, save_images=False):
 
     # For big tasks dump function may run for a long time and
     # we dont need to acquire lock after the task has been initialized from DB.
@@ -1405,33 +1252,25 @@ def export_audino_job(
 
     with TemporaryDirectory(dir=temp_dir_base) as temp_dir:
 
-        final_data, annotation_audio_chunk_file_paths = get_audio_job_export_data(
-            job_id, dst_file, job, temp_dir_base, temp_dir
-        )
+        final_data, annotation_audio_chunk_file_paths = get_audio_job_export_data(job_id, dst_file, job, temp_dir_base, temp_dir)
 
         # Convert the data into a format
         final_data = convert_annotation_data_format(final_data, format_name)
 
         df = pd.DataFrame(final_data)
 
-        # sorting by start column in ascending order
-        df = df.sort_values(by="start")
+        # sorting by start_time column in ascending order
+        df = df.sort_values(by='start')
+
+
 
         # Saving the metadata file
         meta_data_file_path = os.path.join(temp_dir_base, str(job_id) + ".tsv")
-        df.to_csv(meta_data_file_path, sep="\t", index=False)
+        df.to_csv(meta_data_file_path, sep='\t', index=False)
 
-        create_annotation_clips_zip(
-            annotation_audio_chunk_file_paths,
-            meta_data_file_path,
-            temp_dir_base,
-            dst_file,
-        )
+        create_annotation_clips_zip(annotation_audio_chunk_file_paths, meta_data_file_path, temp_dir_base, dst_file)
 
-
-def export_audino_task(
-    task_id, dst_file, format_name, server_url=None, save_images=False
-):
+def export_audino_task(task_id, dst_file, format_name, server_url=None, save_images=False):
 
     with transaction.atomic():
         task = TaskAnnotation(task_id)
@@ -1453,9 +1292,7 @@ def export_audino_task(
                 job = JobAnnotation(job.id)
                 job.init_from_db()
 
-            final_data, annotation_audio_chunk_file_paths = get_audio_job_export_data(
-                job.db_job.id, dst_file, job, temp_dir_base, temp_dir
-            )
+            final_data, annotation_audio_chunk_file_paths = get_audio_job_export_data(job.db_job.id, dst_file, job, temp_dir_base, temp_dir)
 
             # Convert the data into a format
             final_data = convert_annotation_data_format(final_data, format_name)
@@ -1466,27 +1303,18 @@ def export_audino_task(
         # Saving the metadata file
         meta_data_file_path = os.path.join(temp_dir_base, str(task_id) + ".tsv")
 
-        final_task_data_flatten = [
-            item for sublist in final_task_data for item in sublist
-        ]
-        final_annotation_chunk_paths_flatten = [
-            item for sublist in final_annotation_chunk_paths for item in sublist
-        ]
+        final_task_data_flatten = [item for sublist in final_task_data for item in sublist]
+        final_annotation_chunk_paths_flatten = [item for sublist in final_annotation_chunk_paths for item in sublist]
 
         df = pd.DataFrame(final_task_data_flatten)
 
-        # sorting by start column in pandas dataframe
-        df = df.sort_values(by="start")
+        # sorting by start_time column in ascending order
+        df = df.sort_values(by='start')
 
-        df.to_csv(meta_data_file_path, sep="\t", index=False)
 
-        create_annotation_clips_zip(
-            final_annotation_chunk_paths_flatten,
-            meta_data_file_path,
-            temp_dir_base,
-            dst_file,
-        )
+        df.to_csv(meta_data_file_path, sep='\t', index=False)
 
+        create_annotation_clips_zip(final_annotation_chunk_paths_flatten, meta_data_file_path, temp_dir_base, dst_file)
 
 @silk_profile(name="GET task data")
 @transaction.atomic
@@ -1496,7 +1324,6 @@ def get_task_data(pk):
 
     return annotation.data
 
-
 @silk_profile(name="POST task data")
 @transaction.atomic
 def put_task_data(pk, data):
@@ -1504,7 +1331,6 @@ def put_task_data(pk, data):
     annotation.put(data)
 
     return annotation.data
-
 
 @silk_profile(name="UPDATE task data")
 @transaction.atomic
@@ -1519,13 +1345,11 @@ def patch_task_data(pk, data, action):
 
     return annotation.data
 
-
 @silk_profile(name="DELETE task data")
 @transaction.atomic
 def delete_task_data(pk):
     annotation = TaskAnnotation(pk)
     annotation.delete()
-
 
 def export_task(task_id, dst_file, format_name, server_url=None, save_images=False):
     # For big tasks dump function may run for a long time and
@@ -1538,9 +1362,8 @@ def export_task(task_id, dst_file, format_name, server_url=None, save_images=Fal
         task.init_from_db()
 
     exporter = make_exporter(format_name)
-    with open(dst_file, "wb") as f:
+    with open(dst_file, 'wb') as f:
         task.export(f, exporter, host=server_url, save_images=save_images)
-
 
 @transaction.atomic
 def import_task_annotations(src_file, task_id, format_name, conv_mask_to_poly):
@@ -1548,12 +1371,11 @@ def import_task_annotations(src_file, task_id, format_name, conv_mask_to_poly):
     task.init_from_db()
 
     importer = make_importer(format_name)
-    with open(src_file, "rb") as f:
+    with open(src_file, 'rb') as f:
         try:
             task.import_annotations(f, importer, conv_mask_to_poly=conv_mask_to_poly)
         except (DatasetError, DatasetImportError, DatasetNotFoundError) as ex:
             raise CvatImportError(str(ex))
-
 
 @transaction.atomic
 def import_job_annotations(src_file, job_id, format_name, conv_mask_to_poly):
@@ -1561,7 +1383,7 @@ def import_job_annotations(src_file, job_id, format_name, conv_mask_to_poly):
     job.init_from_db()
 
     importer = make_importer(format_name)
-    with open(src_file, "rb") as f:
+    with open(src_file, 'rb') as f:
         try:
             job.import_annotations(f, importer, conv_mask_to_poly=conv_mask_to_poly)
         except (DatasetError, DatasetImportError, DatasetNotFoundError) as ex:
