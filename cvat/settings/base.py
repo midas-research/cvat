@@ -197,6 +197,11 @@ MIDDLEWARE = [
     'dj_pagination.middleware.PaginationMiddleware',
     'cvat.apps.iam.middleware.ContextMiddleware',
     'allauth.account.middleware.AccountMiddleware',
+    'cvat.apps.engine.middleware.ProjectLimitCheckMiddleware',
+    'cvat.apps.engine.middleware.TaskLimitCheckMiddleware',
+    'cvat.apps.engine.middleware.ExportJobAnnotationsMiddleware',
+    'cvat.apps.engine.middleware.ExportTaskAnnotationsMiddleware',
+    'cvat.apps.engine.middleware.ProjectTaskLimitMiddleware',
 ]
 
 UI_URL = os.getenv('UI_URL', '')

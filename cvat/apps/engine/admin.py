@@ -5,7 +5,7 @@
 
 from django.contrib import admin
 from .models import Task, Segment, Job, Label, AttributeSpec, Project, \
-    CloudStorage, Storage, Data, AnnotationGuide, Asset
+    CloudStorage, Storage, Data, AnnotationGuide, Asset, Subscriber
 
 class JobInline(admin.TabularInline):
     model = Job
@@ -187,6 +187,11 @@ class AnnotationGuideAdmin(admin.ModelAdmin):
         AssetInline
     ]
 
+class SubscriberAdmin(admin.ModelAdmin):
+    list_display = ('user', 'subscription_class')
+    list_filter = ('subscription_class',)
+
+
 admin.site.register(Task, TaskAdmin)
 admin.site.register(Segment, SegmentAdmin)
 admin.site.register(Label, LabelAdmin)
@@ -195,3 +200,4 @@ admin.site.register(Storage, StorageAdmin)
 admin.site.register(CloudStorage, CloudStorageAdmin)
 admin.site.register(Data, DataAdmin)
 admin.site.register(AnnotationGuide, AnnotationGuideAdmin)
+admin.site.register(Subscriber, SubscriberAdmin)

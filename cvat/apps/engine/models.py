@@ -1194,3 +1194,22 @@ class Asset(models.Model):
 
     def get_asset_dir(self):
         return os.path.join(settings.ASSETS_ROOT, str(self.uuid))
+
+
+class Subscriber(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="subscriber")
+
+    SUBSCRIPTION_CHOICES = [
+        ('gold', 'Gold'),
+        ('silver', 'Silver'),
+        ('basic', 'Basic'),  # Added basic subscription class
+    ]
+
+    subscription_class = models.CharField(
+        max_length=6,
+        choices=SUBSCRIPTION_CHOICES,
+        default='basic'  # Default set to basic
+    )
+
+    def __str__(self):
+        return f"{self.user.username} - Subscription Class: {self.subscription_class}"
