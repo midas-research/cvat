@@ -2,6 +2,7 @@ import os
 import os.path as osp
 import zipfile
 import csv
+import math
 from django.db import transaction
 from glob import glob
 from pydub import AudioSegment
@@ -21,10 +22,23 @@ def calculate_duration(row):
     return end_time - start_time
 
 
-def split_rows_by_time(all_rows, time_threshold=600):
+def split_rows_by_time(all_rows, clips_folder, time_threshold=600):
     result = []
 
     total_duration = 0
+
+    for row in all_rows:
+        if not row.get("start") or not row.get("end"):
+            audio_file_name = row["audio_path"]
+            audio_file_path = os.path.join(clips_folder, audio_file_name)
+
+            if os.path.isfile(audio_file_path):
+                audio_segment = AudioSegment.from_file(audio_file_path)
+                audio_duration = audio_segment.duration_seconds
+
+                # Set start to 0 if missing, and end to the audio duration
+                row["start"] = row.get("start", "0")
+                row["end"] = row.get("end", str(audio_duration))
 
     for row in all_rows:
         start_time = float(row["start"])
@@ -198,9 +212,9 @@ def _import(src_file, temp_dir, instance_data, load_data_callback=None, **kwargs
                 num_tsv_rows = len(tsv_rows)
                 num_clips = len(os.listdir(clips_folder))
 
-                if num_tsv_rows != num_clips:
+                if num_tsv_rows > num_clips:
                     raise ValueError(
-                        f"Import failed: {num_tsv_rows} rows in TSV but {num_clips} audio clips in the clips folder. The numbers must match."
+                        f"Import failed: {num_tsv_rows} rows in TSV but {num_clips} audio clips in the clips folder. Clips must be equal or more."
                     )
 
             # Combined audio that will be the final output
@@ -221,6 +235,8 @@ def _import(src_file, temp_dir, instance_data, load_data_callback=None, **kwargs
                         combined_audio += (
                             audio_segment  # Append the audio in the order from TSV
                         )
+                    else:
+                        raise FileNotFoundError(f"File not found: {file_path}")
 
             # Create raw folder to store combined audio
             raw_folder_path = os.path.join(task_data.get_data_dirname(), "raw")
@@ -254,7 +270,7 @@ def _import(src_file, temp_dir, instance_data, load_data_callback=None, **kwargs
                 reader = csv.DictReader(tsvfile, delimiter="\t")
                 all_rows = list(reader)
 
-                new_rows = split_rows_by_time(all_rows)
+            new_rows = split_rows_by_time(all_rows, clips_folder)
 
             jobs = Job.objects.filter(segment__task=locked_instance).order_by("id")
 
@@ -361,7 +377,7 @@ def _import(src_file, temp_dir, instance_data, load_data_callback=None, **kwargs
 
                     record_index += 1
                     total_duration = round(end_time, 2)
-                    if 599.9 <= total_duration <= 600:
+                    if math.isclose(total_duration, 600, abs_tol=1e-6):
                         break
 
         else:
