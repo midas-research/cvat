@@ -151,7 +151,7 @@ class OpenPolicyAgentPermission(metaclass=ABCMeta):
             response = session.post(self.url, json=self.payload)
             output = response.json()['result']
 
-        allow = True
+        allow = False
         reasons = []
         if isinstance(output, dict):
             allow = output['allow']
