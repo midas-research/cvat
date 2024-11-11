@@ -149,17 +149,17 @@ class OpenPolicyAgentPermission(metaclass=ABCMeta):
     def check_access(self) -> PermissionResult:
         with make_requests_session() as session:
             response = session.post(self.url, json=self.payload)
-            # output = response.json()['result']
+            output = response.json()['result']
 
         allow = True
         reasons = []
-        # if isinstance(output, dict):
-        #     allow = output['allow']
-        #     reasons = output.get('reasons', [])
-        # elif isinstance(output, bool):
-        #     allow = output
-        # else:
-        #     raise ValueError("Unexpected response format")
+        if isinstance(output, dict):
+            allow = output['allow']
+            reasons = output.get('reasons', [])
+        elif isinstance(output, bool):
+            allow = output
+        else:
+            raise ValueError("Unexpected response format")
 
         return PermissionResult(allow=allow, reasons=reasons)
 
