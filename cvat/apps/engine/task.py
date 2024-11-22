@@ -179,7 +179,7 @@ def _get_task_segment_data(
             if segment_size == 0:
                 raise ValueError("Segment size cannot be zero.")
 
-            overlap = 0
+            overlap = db_task.overlap
             segment_size = segment_step
             # if db_task.overlap is not None:
             #     overlap = min(db_task.overlap, segment_size  // 2)
@@ -1060,9 +1060,12 @@ def _create_thread(
 
     db_task.audio_total_duration = None
 
+    num_frames_per_millisecond = 0
     # calculate chunk size if it isn't specified
     if MEDIA_TYPE == "audio":
         segment_duration = db_task.segment_duration if db_task.segment_duration is not None else 600000
+        overlap_duration = 5*1000
+
         db_task.audio_total_duration = get_audio_duration(details['source_path'][0])
         # db_task.data.audio_total_duration = 720000 #get_audio_duration(details['source_path'][0])
         total_audio_frames = extractor.get_total_frames()
@@ -1075,6 +1078,7 @@ def _create_thread(
 
         num_frames_per_segment_duration = num_frames_per_millisecond*segment_duration
         db_task.segment_size = int(round(num_frames_per_segment_duration))
+        db_task.overlap = int(round(num_frames_per_millisecond * overlap_duration)) # we want to hardcode overlap for audio
 
         # num_segments = max(1, int(math.ceil(db_task.audio_total_duration / segment_duration)))
 
@@ -1206,9 +1210,23 @@ def _create_thread(
                             frame=frame, width=w, height=h)
                         for (path, frame), (w, h) in zip(chunk_paths, img_sizes)
                     ])
+
     if db_data.storage_method == models.StorageMethodChoice.FILE_SYSTEM or not settings.USE_CACHE:
+        def generate_chunks_with_overlap(extractor, chunk_size, overlap):
+            chunk = []
+            chunk_idx = 0
+            for frame in extractor:
+                chunk.append(frame)
+                if len(chunk) == chunk_size + overlap:  # Full chunk including overlap
+                    yield chunk_idx, chunk[:chunk_size]  # Yield the main chunk
+                    chunk_idx += 1
+                    chunk = chunk[chunk_size - overlap:]  # Retain the overlap portion for the next chunk
+            if chunk:  # Yield remaining frames as the last chunk
+                yield chunk_idx, chunk
+
         counter = itertools.count()
-        generator = itertools.groupby(extractor, lambda _: next(counter) // db_data.chunk_size)
+        # generator = itertools.groupby(extractor, lambda _: next(counter) // db_data.chunk_size)
+        generator = generate_chunks_with_overlap(extractor, chunk_size=db_data.chunk_size, overlap=db_task.overlap)
         generator = ((idx, list(chunk_data)) for idx, chunk_data in generator)
 
         def save_chunks(
@@ -1262,8 +1280,13 @@ def _create_thread(
 
         futures = queue.Queue(maxsize=settings.CVAT_CONCURRENT_CHUNK_PROCESSING)
         with concurrent.futures.ThreadPoolExecutor(max_workers=2*settings.CVAT_CONCURRENT_CHUNK_PROCESSING) as executor:
+            seen_frames = set()  # To track unique frames
             for chunk_idx, chunk_data in generator:
-                db_data.size += len(chunk_data)
+                unique_frames = [frame for frame in chunk_data if frame not in seen_frames]
+                seen_frames.update(unique_frames)
+                db_data.size += len(unique_frames)
+
+                # db_data.size += len(chunk_data)
                 if futures.full():
                     process_results(futures.get().result())
                 futures.put(executor.submit(save_chunks, executor, chunk_idx, chunk_data))

@@ -701,6 +701,7 @@ class JobWriteSerializer(WriteOnceMixin, serializers.ModelSerializer):
             size = task.data.size
             valid_frame_ids = task.data.get_valid_frame_indices()
             segment_size = task.segment_size
+            overlap = task.overlap
 
             frame_selection_method = validated_data.pop("frame_selection_method", None)
             if frame_selection_method == models.JobFrameSelectionMethod.RANDOM_UNIFORM:
@@ -712,26 +713,26 @@ class JobWriteSerializer(WriteOnceMixin, serializers.ModelSerializer):
                     )
 
                 if task.data.original_chunk_type == DataChoice.AUDIO:
-                    num_segments = size // segment_size
+                    effective_increment = segment_size - overlap
+
+                    # Create overlapping segments
                     jobs_frame_list = []
-                    for i in range(num_segments):
-                        start = i * segment_size
-                        end  = (i+1) * segment_size - 1
-                        array = [j for j in range(start,end+1)]
+                    start = 0
+                    while start < size:
+                        end = min(start + segment_size - 1, size - 1)  # last frame does not exceed the total size
+                        array = [j for j in range(start, end + 1)]
                         jobs_frame_list.append(array)
+                        start += effective_increment  # Move to the next start position considering the overlap
 
-                    #  if there's a remainder, create the  last array
-                    if size % segment_size != 0:
-                        start = num_segments * segment_size
-                        end  = size - 1
-                        array = [j for j in range(start,end+1)]
-                        jobs_frame_list.append(array)
-
-                    #Random select from the list
+                    # Randomly select from the list
                     import math, random
+
                     random_jobs_no = math.ceil(frame_count / segment_size)
                     selected_jobs_frames = random.sample(jobs_frame_list, random_jobs_no)
+
+                    # Flatten and sort the selected frames
                     frames = sorted([item for sublist in selected_jobs_frames for item in sublist])
+
                 else:
                     seed = validated_data.pop("seed", None)
 
