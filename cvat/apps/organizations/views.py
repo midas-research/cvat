@@ -239,6 +239,7 @@ class InvitationViewSet(viewsets.GenericViewSet,
     def create(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
         try:
             self.perform_create(serializer)
         except ImproperlyConfigured:
@@ -254,7 +255,11 @@ class InvitationViewSet(viewsets.GenericViewSet,
             request=self.request,
         )
 
+
+
+
     def perform_update(self, serializer):
+
         if 'accepted' in self.request.query_params:
             serializer.instance.accept()
         else:
@@ -265,6 +270,7 @@ class InvitationViewSet(viewsets.GenericViewSet,
     def accept(self, request, pk):
         try:
             invitation = self.get_object() # force to call check_object_permissions
+
             if invitation.expired:
                 return Response(status=status.HTTP_400_BAD_REQUEST, data="Your invitation is expired. Please contact organization owner to renew it.")
             if invitation.membership.is_active:
@@ -272,6 +278,17 @@ class InvitationViewSet(viewsets.GenericViewSet,
             invitation.accept()
             response_serializer = AcceptInvitationReadSerializer(data={'organization_slug': invitation.membership.organization.slug})
             response_serializer.is_valid(raise_exception=True)
+
+            ## Notifications
+            from ..notifications.api import SendNotificationToOrganisationUsers
+
+            notification_response = SendNotificationToOrganisationUsers(
+                self.request.iam_context['organization'].id,
+                f"{self.request.user.username} joined to {self.request.iam_context['organization'].name}",
+                "Hey guys an idiot joined the organization.",
+                "info"
+            )
+
             return Response(status=status.HTTP_200_OK, data=response_serializer.data)
         except Invitation.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND, data="This invitation does not exist. Please contact organization owner.")

@@ -2218,6 +2218,17 @@ class AIAudioAnnotationViewSet(viewsets.ModelViewSet):
             job.save()
 
             self.send_annotation_email(request, 'annotation')
+
+            ## Notification
+            from ..notifications.api import SendNotificationToSingleUser
+
+            notification_response = SendNotificationToSingleUser(
+                request.user.id,
+                f"#{job.id} - Annotaion Completed",
+                f"This annotation was completed at {datetime.now()}. \nStatus: {job.ai_audio_annotation_status}",
+                "info"
+            )
+
             return Response({'success': True, 'segments': saved_segments}, status=status.HTTP_201_CREATED)
 
         except Exception as e:
