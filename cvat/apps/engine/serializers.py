@@ -612,6 +612,7 @@ class JobReadSerializer(serializers.ModelSerializer):
     target_storage = StorageSerializer(required=False, allow_null=True)
     source_storage = StorageSerializer(required=False, allow_null=True)
     task_flags = TaskFlagsSerializer(source="segment.task.flags", read_only=True)
+    overlap = serializers.ReadOnlyField(source="segment.task.overlap")
 
     class Meta:
         model = models.Job
@@ -620,7 +621,7 @@ class JobReadSerializer(serializers.ModelSerializer):
             'start_frame', 'stop_frame', 'data_chunk_size', 'data_compressed_chunk_type',
             'created_date', 'updated_date', 'issues', 'labels', 'type', 'organization',
             'target_storage', 'source_storage', 'ai_audio_annotation_status',
-            'ai_audio_annotation_task_id', 'ai_audio_annotation_error_msg', 'task_flags')
+            'ai_audio_annotation_task_id', 'ai_audio_annotation_error_msg', 'task_flags', 'overlap')
         read_only_fields = fields
 
     def to_representation(self, instance):
