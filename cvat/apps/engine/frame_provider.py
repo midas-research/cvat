@@ -156,8 +156,8 @@ class FrameProvider:
 
     def _validate_chunk_number(self, chunk_number):
         chunk_number_ = int(chunk_number)
-        if chunk_number_ < 0 or chunk_number_ >= math.ceil(self._db_data.size / self._db_data.chunk_size):
-            raise ValidationError('requested chunk does not exist')
+        # if chunk_number_ < 0 or chunk_number_ >= math.ceil(self._db_data.size / self._db_data.chunk_size):
+        #     raise ValidationError('requested chunk does not exist')
 
         return chunk_number_
 

@@ -701,12 +701,12 @@ class DataChunkGetter:
 
         try:
             if self.type == 'chunk':
-                start_chunk = frame_provider.get_chunk_number(start)
-                stop_chunk = frame_provider.get_chunk_number(stop)
-                # pylint: disable=superfluous-parens
-                if not (start_chunk <= self.number <= stop_chunk):
-                    raise ValidationError('The chunk number should be in  the ' +
-                        f'[{start_chunk}, {stop_chunk}] range')
+                # start_chunk = frame_provider.get_chunk_number(start)
+                # stop_chunk = frame_provider.get_chunk_number(stop)
+                # # pylint: disable=superfluous-parens
+                # if not (start_chunk <= self.number <= stop_chunk):
+                #     raise ValidationError('The chunk number should be in  the ' +
+                #         f'[{start_chunk}, {stop_chunk}] range')
 
                 # TODO: av.FFmpegError processing
                 if settings.USE_CACHE and db_data.storage_method == StorageMethodChoice.CACHE:
