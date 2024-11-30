@@ -1062,6 +1062,7 @@ def get_audio_job_export_data(job_id, dst_file, job, temp_dir_base, temp_dir):
 
     for i, annotation in enumerate(annotations):
         entry = {
+            "job_id": job_id,
             "path": os.path.basename(annotation_audio_chunk_file_paths[i]),
             "sentence": annotation.get("transcript", ""),
             "age": annotation.get("age", ""),
@@ -1087,6 +1088,7 @@ def get_audio_job_export_data(job_id, dst_file, job, temp_dir_base, temp_dir):
 
         final_data.append(entry)
 
+
     slogger.glob.debug("JOB ANNOTATION DATA")
     slogger.glob.debug(json.dumps(final_data))
     slogger.glob.debug("All ANNOTATIONs DATA")
@@ -1100,6 +1102,7 @@ def convert_annotation_data_format(data, format_name):
         formatted_data = []
         for entry in data:
             formatted_entry = {
+                "job_id": entry["job_id"],
                 "chapter_id": "",
                 "file": entry["path"],
                 "id": str(uuid.uuid4()),
@@ -1115,10 +1118,11 @@ def convert_annotation_data_format(data, format_name):
             formatted_data.append(formatted_entry)
         return formatted_data
     elif format_name == "VoxPopuli":
-        language_id_mapping = {"en": 0}
+        language_id_mapping = {"en-US": 0,"es-ES":1,"fr-FR":2,"zh-CN":3,"hi-IN":4,"ar-EG":5,"pt-BR":6,"ja-JP":7,"de-DE":8,"ru-RU":9}
         formatted_data = []
         for entry in data:
             formatted_entry = {
+                "job_id": entry["job_id"],
                 "audio_id": str(uuid.uuid4()),
                 "language": language_id_mapping.get(entry["locale"], None),
                 "audio_path": entry["path"],
@@ -1141,6 +1145,7 @@ def convert_annotation_data_format(data, format_name):
         formatted_data = []
         for entry in data:
             formatted_entry = {
+                "job_id": entry["job_id"],
                 "file": entry["path"],
                 "text": entry["sentence"],
                 "gender": entry["gender"],
@@ -1155,10 +1160,12 @@ def convert_annotation_data_format(data, format_name):
                 formatted_entry[key] = entry[key]
             formatted_data.append(formatted_entry)
         return formatted_data
+
     elif format_name == "VoxCeleb":
         formatted_data = []
         for entry in data:
             formatted_entry = {
+                "job_id": entry["job_id"],
                 "file": entry["path"],
                 "text": entry["sentence"],
                 "gender": entry["gender"],
@@ -1175,10 +1182,12 @@ def convert_annotation_data_format(data, format_name):
                 formatted_entry[key] = entry[key]
             formatted_data.append(formatted_entry)
         return formatted_data
+
     elif format_name == "VCTK_Corpus":
         formatted_data = []
         for entry in data:
             formatted_entry = {
+                "job_id": entry["job_id"],
                 "file": entry["path"],
                 "text": entry["sentence"],
                 "gender": entry["gender"],
@@ -1195,11 +1204,14 @@ def convert_annotation_data_format(data, format_name):
                 formatted_entry[key] = entry[key]
             formatted_data.append(formatted_entry)
         return formatted_data
+
     elif format_name == "LibriVox":
-        language_id_mapping = {"en": 0}
+
         formatted_data = []
+        language_id_mapping = {"en-US": 0,"es-ES":1,"fr-FR":2,"zh-CN":3,"hi-IN":4,"ar-EG":5,"pt-BR":6,"ja-JP":7,"de-DE":8,"ru-RU":9 }
         for entry in data:
             formatted_entry = {
+                "job_id": entry["job_id"],
                 "file": entry["path"],
                 "text": entry["sentence"],
                 "gender": entry["gender"],
@@ -1246,8 +1258,10 @@ def export_audino_job(job_id, dst_file, format_name, server_url=None, save_image
 
         df = pd.DataFrame(final_data)
 
-        # sorting by start column in ascending order
+        # sorting by start_time column in ascending order
         df = df.sort_values(by='start')
+
+
 
         # Saving the metadata file
         meta_data_file_path = os.path.join(temp_dir_base, str(job_id) + ".tsv")
@@ -1293,8 +1307,9 @@ def export_audino_task(task_id, dst_file, format_name, server_url=None, save_ima
 
         df = pd.DataFrame(final_task_data_flatten)
 
-        # sorting by start column in pandas dataframe
+        # sorting by start_time column in ascending order
         df = df.sort_values(by='start')
+
 
         df.to_csv(meta_data_file_path, sep='\t', index=False)
 

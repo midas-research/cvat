@@ -119,3 +119,19 @@ import cvat.apps.dataset_manager.formats.cityscapes
 import cvat.apps.dataset_manager.formats.openimages
 #Audino Export Formats
 import cvat.apps.dataset_manager.formats.aud_common_voice
+#Audino Import Formats
+import cvat.apps.dataset_manager.formats.librispeech
+import cvat.apps.dataset_manager.formats.common_voice
+import cvat.apps.dataset_manager.formats.tedlium
+import cvat.apps.dataset_manager.formats.Voxpopuli
+import cvat.apps.dataset_manager.formats.VoxCeleb
+import cvat.apps.dataset_manager.formats.VCTK_Corpus
+import cvat.apps.dataset_manager.formats.LibriVox
+
+
+
+
+
+
+
+
